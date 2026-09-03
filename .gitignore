@@ -1,0 +1,104 @@
+# ==========================================
+# VARIABLES DE ENTORNO / SECRETOS
+# ==========================================
+
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+
+
+# ==========================================
+# SISTEMA OPERATIVO
+# ==========================================
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+
+# ==========================================
+# VS CODE / IDE
+# ==========================================
+
+.vscode/
+.idea/
+
+*.iml
+
+
+# ==========================================
+# NODE / FRONTEND
+# ==========================================
+
+node_modules/
+dist/
+.angular/
+.next/
+coverage/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+
+# ==========================================
+# JAVA / SPRING BOOT
+# ==========================================
+
+target/
+build/
+
+*.class
+*.jar
+*.war
+*.ear
+
+.mvn/timing.properties
+
+
+# ==========================================
+# PYTHON - por si alguna utilidad futura usa Python
+# ==========================================
+
+__pycache__/
+*.py[cod]
+
+.venv/
+venv/
+
+
+# ==========================================
+# FLUTTER / DART
+# ==========================================
+
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+
+build/
+
+android/.gradle/
+android/local.properties
+
+ios/Pods/
+ios/.symlinks/
+
+
+# ==========================================
+# TEMPORALES / GENERADOS
+# ==========================================
+
+tmp/
+temp/
+*.tmp
+*.log
+
+generated/
+exports/
