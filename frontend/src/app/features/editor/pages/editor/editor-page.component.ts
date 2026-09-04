@@ -3,7 +3,13 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { DEV_USER_ID } from '../../../../core/config/dev-user.config';
-import { DiagramDetail, UmlAttribute, UmlClass } from '../../models/diagram.model';
+import {
+  DiagramDetail,
+  UmlAttribute,
+  UmlClass,
+  UmlMethod,
+  UmlParameter,
+} from '../../models/diagram.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
 import { DiagramService } from '../../services/diagram.service';
 
@@ -18,6 +24,18 @@ interface AttributeDraft {
   isFinal: boolean;
   defaultValue: string;
   primaryKey: boolean;
+}
+
+interface MethodDraft {
+  name: string;
+  returnType: string;
+  visibility: Visibility;
+  isStatic: boolean;
+}
+
+interface ParameterDraft {
+  name: string;
+  type: string;
 }
 
 interface RenderedUmlClass {
@@ -72,12 +90,26 @@ export class EditorPageComponent {
     );
     return umlClass ? { umlClass } : null;
   });
+  readonly editingMethod = computed(() => {
+    const umlClass = this.selectedClass()?.umlClass;
+    const methodId = this.editingMethodId();
+    return umlClass?.methods.find((method) => method.id === methodId) ?? null;
+  });
   readonly attributeDraft = signal<AttributeDraft | null>(null);
   readonly editingAttributeId = signal<string | null>(null);
   readonly attributeSaving = signal(false);
   readonly attributeError = signal('');
   readonly pendingAttributeDeletion = signal<UmlAttribute | null>(null);
   readonly advancedAttributeOptionsOpen = signal(false);
+  readonly methodDraft = signal<MethodDraft | null>(null);
+  readonly editingMethodId = signal<string | null>(null);
+  readonly parameterDraft = signal<ParameterDraft | null>(null);
+  readonly editingParameterId = signal<string | null>(null);
+  readonly pendingMethodDeletion = signal<UmlMethod | null>(null);
+  readonly pendingParameterDeletion = signal<UmlParameter | null>(null);
+  readonly methodSaving = signal(false);
+  readonly methodError = signal('');
+  readonly parameterError = signal('');
   readonly visibilityOptions: Visibility[] = ['PUBLIC', 'PRIVATE', 'PROTECTED', 'PACKAGE'];
   readonly renderedClasses = computed<RenderedUmlClass[]>(() => {
     const currentDiagram = this.diagram();
@@ -451,6 +483,320 @@ export class EditorPageComponent {
           );
         },
       });
+  }
+
+  startAddMethod(): void {
+    if (!this.selectedClass()) return;
+    this.editingMethodId.set(null);
+    this.parameterDraft.set(null);
+    this.editingParameterId.set(null);
+    this.methodError.set('');
+    this.parameterError.set('');
+    this.methodDraft.set({ name: '', returnType: 'void', visibility: 'PUBLIC', isStatic: false });
+  }
+
+  startEditMethod(method: UmlMethod): void {
+    this.editingMethodId.set(method.id);
+    this.parameterDraft.set(null);
+    this.editingParameterId.set(null);
+    this.methodError.set('');
+    this.parameterError.set('');
+    this.methodDraft.set({
+      name: method.name,
+      returnType: method.returnType,
+      visibility: method.visibility as Visibility,
+      isStatic: method.isStatic,
+    });
+  }
+
+  updateMethodDraft(field: keyof MethodDraft, value: string | boolean): void {
+    this.methodDraft.update((draft) =>
+      draft ? ({ ...draft, [field]: value } as MethodDraft) : draft,
+    );
+  }
+
+  cancelMethodEdit(): void {
+    if (this.methodSaving()) return;
+    this.methodDraft.set(null);
+    this.editingMethodId.set(null);
+    this.parameterDraft.set(null);
+    this.editingParameterId.set(null);
+    this.methodError.set('');
+    this.parameterError.set('');
+  }
+
+  saveMethod(): void {
+    if (this.methodSaving()) return;
+    const currentDiagram = this.diagram();
+    const currentClass = this.selectedClass()?.umlClass;
+    const draft = this.methodDraft();
+    if (!currentDiagram || !currentClass || !draft) return;
+    const name = draft.name.trim();
+    const returnType = draft.returnType.trim();
+    if (!name || !returnType) {
+      this.methodError.set('Nombre y tipo de retorno son obligatorios.');
+      return;
+    }
+    if (!this.visibilityOptions.includes(draft.visibility)) {
+      this.methodError.set('La visibilidad no es válida.');
+      return;
+    }
+    const editingId = this.editingMethodId();
+    const existing = currentClass.methods.find((method) => method.id === editingId);
+    const signature = this.methodSignature(name, existing?.parameters ?? []);
+    if (
+      currentClass.methods.some(
+        (method) =>
+          method.id !== editingId &&
+          this.methodSignature(method.name, method.parameters) === signature,
+      )
+    ) {
+      this.methodError.set('Ya existe un método con esa firma.');
+      return;
+    }
+    if (
+      existing &&
+      existing.name === name &&
+      existing.returnType === returnType &&
+      existing.visibility === draft.visibility &&
+      existing.isStatic === draft.isStatic
+    ) {
+      return;
+    }
+    const methodId = editingId ?? crypto.randomUUID();
+    const payload = editingId
+      ? {
+          classId: currentClass.id,
+          methodId,
+          name,
+          returnType,
+          visibility: draft.visibility,
+          isStatic: draft.isStatic,
+        }
+      : {
+          classId: currentClass.id,
+          method: {
+            id: methodId,
+            name,
+            returnType,
+            visibility: draft.visibility,
+            isStatic: draft.isStatic,
+            parameters: [],
+          },
+        };
+    this.methodSaving.set(true);
+    this.methodError.set('');
+    this.operationService
+      .execute(this.diagramId, {
+        operation: {
+          operationId: crypto.randomUUID(),
+          diagramId: this.diagramId,
+          userId: DEV_USER_ID,
+          baseVersion: currentDiagram.version,
+          type: editingId ? 'UPDATE_METHOD' : 'ADD_METHOD',
+          payload,
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.applyOperationResponse(response);
+          this.methodSaving.set(false);
+          this.editingMethodId.set(methodId);
+          this.parameterDraft.set(null);
+          this.editingParameterId.set(null);
+        },
+        error: (error: unknown) => {
+          this.methodSaving.set(false);
+          this.methodError.set(this.operationError(error, 'No se pudo guardar el método.'));
+          console.error(
+            'No se pudo guardar el método.',
+            error instanceof HttpErrorResponse ? error.status : 'Error HTTP',
+          );
+        },
+      });
+  }
+
+  removeMethod(method: UmlMethod): void {
+    if (this.methodSaving() || !this.selectedClass()) return;
+    this.methodError.set('');
+    this.pendingMethodDeletion.set(method);
+  }
+
+  cancelMethodDeletion(): void {
+    if (!this.methodSaving()) this.pendingMethodDeletion.set(null);
+  }
+
+  confirmMethodDeletion(): void {
+    const currentDiagram = this.diagram();
+    const currentClass = this.selectedClass()?.umlClass;
+    const method = this.pendingMethodDeletion();
+    if (!currentDiagram || !currentClass || !method || this.methodSaving()) return;
+    this.methodSaving.set(true);
+    this.operationService
+      .execute(this.diagramId, {
+        operation: {
+          operationId: crypto.randomUUID(),
+          diagramId: this.diagramId,
+          userId: DEV_USER_ID,
+          baseVersion: currentDiagram.version,
+          type: 'REMOVE_METHOD',
+          payload: { classId: currentClass.id, methodId: method.id },
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.applyOperationResponse(response);
+          this.methodSaving.set(false);
+          this.pendingMethodDeletion.set(null);
+        },
+        error: (error: unknown) => {
+          this.methodSaving.set(false);
+          this.methodError.set(this.operationError(error, 'No se pudo eliminar el método.'));
+          console.error(
+            'No se pudo eliminar el método.',
+            error instanceof HttpErrorResponse ? error.status : 'Error HTTP',
+          );
+        },
+      });
+  }
+
+  startAddParameter(): void {
+    if (!this.editingMethodId() || !this.methodDraft()) return;
+    this.editingParameterId.set(null);
+    this.parameterError.set('');
+    this.parameterDraft.set({ name: '', type: '' });
+  }
+
+  startEditParameter(parameter: UmlParameter): void {
+    this.editingParameterId.set(parameter.id);
+    this.parameterError.set('');
+    this.parameterDraft.set({ name: parameter.name, type: parameter.type });
+  }
+
+  updateParameterDraft(field: keyof ParameterDraft, value: string): void {
+    this.parameterDraft.update((draft) => (draft ? { ...draft, [field]: value } : draft));
+  }
+
+  cancelParameterEdit(): void {
+    if (!this.methodSaving()) {
+      this.parameterDraft.set(null);
+      this.editingParameterId.set(null);
+      this.parameterError.set('');
+    }
+  }
+
+  saveParameter(): void {
+    if (this.methodSaving()) return;
+    const currentDiagram = this.diagram();
+    const currentClass = this.selectedClass()?.umlClass;
+    const methodId = this.editingMethodId();
+    const draft = this.parameterDraft();
+    if (!currentDiagram || !currentClass || !methodId || !draft) return;
+    const method = currentClass.methods.find((candidate) => candidate.id === methodId);
+    if (!method) return;
+    const name = draft.name.trim();
+    const type = draft.type.trim();
+    if (!name || !type) {
+      this.parameterError.set('Nombre y tipo son obligatorios.');
+      return;
+    }
+    const editingId = this.editingParameterId();
+    if (
+      method.parameters.some(
+        (parameter) =>
+          parameter.id !== editingId && parameter.name.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      this.parameterError.set('Ya existe un parámetro con ese nombre.');
+      return;
+    }
+    const existing = method.parameters.find((parameter) => parameter.id === editingId);
+    if (existing && existing.name === name && existing.type === type) {
+      this.cancelParameterEdit();
+      return;
+    }
+    const parameterId = editingId ?? crypto.randomUUID();
+    const payload = editingId
+      ? { classId: currentClass.id, methodId, parameterId, name, type }
+      : { classId: currentClass.id, methodId, parameter: { id: parameterId, name, type } };
+    this.methodSaving.set(true);
+    this.parameterError.set('');
+    this.operationService
+      .execute(this.diagramId, {
+        operation: {
+          operationId: crypto.randomUUID(),
+          diagramId: this.diagramId,
+          userId: DEV_USER_ID,
+          baseVersion: currentDiagram.version,
+          type: editingId ? 'UPDATE_PARAMETER' : 'ADD_PARAMETER',
+          payload,
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.applyOperationResponse(response);
+          this.methodSaving.set(false);
+          this.parameterDraft.set(null);
+          this.editingParameterId.set(null);
+        },
+        error: (error: unknown) => {
+          this.methodSaving.set(false);
+          this.parameterError.set(this.operationError(error, 'No se pudo guardar el parámetro.'));
+          console.error(
+            'No se pudo guardar el parámetro.',
+            error instanceof HttpErrorResponse ? error.status : 'Error HTTP',
+          );
+        },
+      });
+  }
+
+  removeParameter(parameter: UmlParameter): void {
+    if (this.methodSaving() || !this.editingMethodId()) return;
+    this.parameterError.set('');
+    this.pendingParameterDeletion.set(parameter);
+  }
+
+  cancelParameterDeletion(): void {
+    if (!this.methodSaving()) this.pendingParameterDeletion.set(null);
+  }
+
+  confirmParameterDeletion(): void {
+    const currentDiagram = this.diagram();
+    const currentClass = this.selectedClass()?.umlClass;
+    const methodId = this.editingMethodId();
+    const parameter = this.pendingParameterDeletion();
+    if (!currentDiagram || !currentClass || !methodId || !parameter || this.methodSaving()) return;
+    this.methodSaving.set(true);
+    this.operationService
+      .execute(this.diagramId, {
+        operation: {
+          operationId: crypto.randomUUID(),
+          diagramId: this.diagramId,
+          userId: DEV_USER_ID,
+          baseVersion: currentDiagram.version,
+          type: 'REMOVE_PARAMETER',
+          payload: { classId: currentClass.id, methodId, parameterId: parameter.id },
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.applyOperationResponse(response);
+          this.methodSaving.set(false);
+          this.pendingParameterDeletion.set(null);
+        },
+        error: (error: unknown) => {
+          this.methodSaving.set(false);
+          this.parameterError.set(this.operationError(error, 'No se pudo eliminar el parámetro.'));
+          console.error(
+            'No se pudo eliminar el parámetro.',
+            error instanceof HttpErrorResponse ? error.status : 'Error HTTP',
+          );
+        },
+      });
+  }
+
+  private methodSignature(name: string, parameters: UmlParameter[]): string {
+    return `${name.toLowerCase()}(${parameters.map((parameter) => parameter.type.trim().toLowerCase()).join(',')})`;
   }
 
   private applyOperationResponse(response: {

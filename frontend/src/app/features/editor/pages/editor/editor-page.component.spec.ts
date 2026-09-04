@@ -3,8 +3,7 @@ import { ActivatedRoute, provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { NEVER, of, throwError } from 'rxjs';
 
-import { DiagramDetail } from '../../models/diagram.model';
-import { UmlAttribute } from '../../models/diagram.model';
+import { DiagramDetail, UmlAttribute, UmlMethod, UmlParameter } from '../../models/diagram.model';
 import { ExecuteDiagramOperationRequest } from '../../models/diagram-operation.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
 import { DiagramService } from '../../services/diagram.service';
@@ -489,5 +488,102 @@ describe('EditorPageComponent', () => {
     page.confirmAttributeDeletion();
     expect(executions).toBe(1);
     expect(page.attributeSaving()).toBe(true);
+  });
+
+  it('manages methods and parameters with atomic operations', async () => {
+    const current = diagramWithClass();
+    let serverMethod: UmlMethod | undefined = {
+      id: 'm1',
+      name: 'buscar',
+      returnType: 'Cliente',
+      visibility: 'PUBLIC',
+      isStatic: false,
+      parameters: [],
+    };
+    const requests: ExecuteDiagramOperationRequest[] = [];
+    await configure(
+      {
+        execute: (_id: string, request: ExecuteDiagramOperationRequest) => {
+          requests.push(request);
+          const type = request.operation.type;
+          if (type === 'ADD_METHOD')
+            serverMethod = (request.operation.payload as { method: UmlMethod }).method;
+          if (type === 'UPDATE_METHOD' && serverMethod)
+            serverMethod = {
+              ...serverMethod,
+              ...(request.operation.payload as {
+                name: string;
+                returnType: string;
+                visibility: string;
+                isStatic: boolean;
+              }),
+            };
+          if (type === 'ADD_PARAMETER' && serverMethod)
+            serverMethod = {
+              ...serverMethod,
+              parameters: [
+                ...serverMethod.parameters,
+                (
+                  request.operation.payload as {
+                    parameter: { id: string; name: string; type: string };
+                  }
+                ).parameter,
+              ],
+            };
+          if (type === 'UPDATE_PARAMETER' && serverMethod)
+            serverMethod = {
+              ...serverMethod,
+              parameters: serverMethod.parameters.map((parameter) =>
+                parameter.id === (request.operation.payload as { parameterId: string }).parameterId
+                  ? {
+                      ...parameter,
+                      ...(request.operation.payload as { name: string; type: string }),
+                    }
+                  : parameter,
+              ),
+            };
+          if (type === 'REMOVE_PARAMETER' && serverMethod)
+            serverMethod = { ...serverMethod, parameters: [] };
+          if (type === 'REMOVE_METHOD') serverMethod = undefined;
+          const methods = serverMethod ? [serverMethod] : [];
+          return of({
+            newVersion: current.version + requests.length,
+            canonicalModel: {
+              ...current.canonicalModel,
+              classes: [{ ...current.canonicalModel.classes[0], methods }],
+            },
+            viewState: current.viewState,
+          });
+        },
+      },
+      current,
+    );
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectedClassId.set('c1');
+    page.startAddMethod();
+    page.updateMethodDraft('name', 'buscar');
+    page.updateMethodDraft('returnType', 'Cliente');
+    page.saveMethod();
+    expect(requests[0].operation.type).toBe('ADD_METHOD');
+    page.startAddParameter();
+    page.updateParameterDraft('name', 'id');
+    page.updateParameterDraft('type', 'Long');
+    page.saveParameter();
+    expect(requests[1].operation.type).toBe('ADD_PARAMETER');
+    expect(page.formatMethod(page.diagram()!.canonicalModel.classes[0].methods[0])).toBe(
+      'buscar(id: Long): Cliente',
+    );
+    page.startEditMethod(page.diagram()!.canonicalModel.classes[0].methods[0]);
+    page.updateMethodDraft('visibility', 'PRIVATE');
+    page.saveMethod();
+    expect(requests[2].operation.type).toBe('UPDATE_METHOD');
+    page.startEditMethod(page.diagram()!.canonicalModel.classes[0].methods[0]);
+    page.removeParameter(page.diagram()!.canonicalModel.classes[0].methods[0].parameters[0]);
+    page.confirmParameterDeletion();
+    expect(requests[3].operation.type).toBe('REMOVE_PARAMETER');
+    page.removeMethod(page.diagram()!.canonicalModel.classes[0].methods[0]);
+    page.confirmMethodDeletion();
+    expect(requests[4].operation.type).toBe('REMOVE_METHOD');
+    expect(page.selectedClassId()).toBe('c1');
   });
 });

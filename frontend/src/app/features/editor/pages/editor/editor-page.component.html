@@ -207,7 +207,7 @@
                       />
                       Final
                     </label>
-                    <label title="Valor inicial del atributo.">
+                    <label class="advanced-default-value" title="Valor inicial del atributo.">
                       Valor por defecto
                       <input
                         [value]="draft.defaultValue"
@@ -269,6 +269,176 @@
                 </div>
               }
             }
+            <div class="attributes-heading">
+              <span class="section-label"
+                >Métodos <span>{{ selected.umlClass.methods.length }}</span></span
+              >
+              <button
+                class="add-attribute add-method"
+                type="button"
+                [disabled]="methodSaving()"
+                (click)="startAddMethod()"
+              >
+                + Método
+              </button>
+            </div>
+            @if (methodError()) {
+              <p class="attribute-error method-error">{{ methodError() }}</p>
+            }
+            @if (methodDraft(); as draft) {
+              <div class="attribute-form method-form">
+                <label
+                  >Nombre<input
+                    [value]="draft.name"
+                    (input)="updateMethodDraft('name', $any($event.target).value)"
+                /></label>
+                <label
+                  >Tipo de retorno<input
+                    [value]="draft.returnType"
+                    (input)="updateMethodDraft('returnType', $any($event.target).value)"
+                /></label>
+                <label
+                  >Visibilidad<select
+                    [value]="draft.visibility"
+                    (change)="updateMethodDraft('visibility', $any($event.target).value)"
+                  >
+                    @for (visibility of visibilityOptions; track visibility) {
+                      <option [value]="visibility">{{ visibility }}</option>
+                    }
+                  </select></label
+                >
+                <div class="method-static-row advanced-options">
+                  <label class="method-static-option">
+                    <input
+                      type="checkbox"
+                      [checked]="draft.isStatic"
+                      (change)="updateMethodDraft('isStatic', $any($event.target).checked)"
+                    />
+                    <span>Static</span>
+                  </label>
+                </div>
+                <div class="attributes-heading parameters-heading">
+                  <span
+                    >Parámetros <span>{{ editingMethod()?.parameters?.length ?? 0 }}</span></span
+                  >
+                  <button
+                    class="add-attribute"
+                    type="button"
+                    [disabled]="methodSaving()"
+                    (click)="startAddParameter()"
+                  >
+                    + Parámetro
+                  </button>
+                </div>
+                @if (parameterError()) {
+                  <p class="attribute-error parameter-error">{{ parameterError() }}</p>
+                }
+                @if (parameterDraft(); as parameterDraft) {
+                  <div class="attribute-form parameter-editor">
+                    <label
+                      >Nombre<input
+                        placeholder="Ej. id"
+                        [value]="parameterDraft.name"
+                        (input)="updateParameterDraft('name', $any($event.target).value)"
+                    /></label>
+                    <label
+                      >Tipo<input
+                        placeholder="Ej. Long, String, Cliente"
+                        [value]="parameterDraft.type"
+                        (input)="updateParameterDraft('type', $any($event.target).value)"
+                    /></label>
+                    <div class="attribute-actions parameter-actions">
+                      <button
+                        class="btn btn-ghost"
+                        type="button"
+                        [disabled]="methodSaving()"
+                        (click)="cancelParameterEdit()"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        class="btn btn-primary"
+                        type="button"
+                        [disabled]="methodSaving()"
+                        (click)="saveParameter()"
+                      >
+                        {{
+                          methodSaving()
+                            ? 'Guardando...'
+                            : editingParameterId()
+                              ? 'Guardar cambios'
+                              : 'Agregar'
+                        }}
+                      </button>
+                    </div>
+                  </div>
+                } @else if (editingMethod(); as method) {
+                  @for (parameter of method.parameters; track parameter.id) {
+                    <div class="parameter-row attribute-row">
+                      <span>{{ parameter.name }}: {{ parameter.type }}</span>
+                      <span class="method-row-actions">
+                        <button
+                          class="add-attribute method-action"
+                          type="button"
+                          title="Editar parámetro"
+                          (click)="startEditParameter(parameter)"
+                        >
+                          Editar</button
+                        ><button
+                          class="btn-danger method-action"
+                          type="button"
+                          title="Eliminar parámetro"
+                          (click)="removeParameter(parameter)"
+                        >
+                          Eliminar
+                        </button>
+                      </span>
+                    </div>
+                  }
+                }
+                <div class="attribute-actions method-actions">
+                  <button
+                    class="btn btn-ghost"
+                    type="button"
+                    [disabled]="methodSaving()"
+                    (click)="cancelMethodEdit()"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    class="btn btn-primary"
+                    type="button"
+                    [disabled]="methodSaving()"
+                    (click)="saveMethod()"
+                  >
+                    {{ methodSaving() ? 'Guardando...' : 'Guardar' }}
+                  </button>
+                </div>
+              </div>
+            } @else if (selected.umlClass.methods.length === 0) {
+              <p class="muted">Sin métodos</p>
+            } @else {
+              @for (method of selected.umlClass.methods; track method.id) {
+                <div class="attribute-row method-row">
+                  <span [class.static-member]="isStatic(method)"
+                    >{{ visibilitySymbol(method.visibility) }} {{ formatMethod(method) }}</span
+                  >
+                  <span class="attribute-row-actions method-row-actions"
+                    ><button class="add-attribute method-action" type="button" title="Editar método" (click)="startEditMethod(method)">
+                      Editar</button
+                    ><button
+                      class="btn-danger method-action"
+                      type="button"
+                      title="Eliminar método"
+                      [disabled]="methodSaving()"
+                      (click)="removeMethod(method)"
+                    >
+                      Eliminar
+                    </button></span
+                  >
+                </div>
+              }
+            }
           } @else {
             <p class="muted">Selecciona una clase para ver sus propiedades.</p>
           }
@@ -292,6 +462,76 @@
         <div class="history">
           <span class="section-label">Actividad reciente</span>
           <p>Las operaciones del diagrama aparecerán aquí.<small>Historial próximamente</small></p>
+        </div>
+      }
+      @if (pendingMethodDeletion(); as method) {
+        <div class="attribute-modal-backdrop" role="presentation" (click)="cancelMethodDeletion()">
+          <section
+            class="attribute-modal"
+            role="dialog"
+            aria-modal="true"
+            (click)="$event.stopPropagation()"
+          >
+            <div class="attribute-modal-icon">!</div>
+            <h2>Eliminar método</h2>
+            <p>¿Seguro que deseas eliminar el método “{{ method.name }}”?</p>
+            <small>Esta acción no se puede deshacer.</small>
+            <div class="attribute-modal-actions">
+              <button
+                class="btn btn-ghost"
+                type="button"
+                [disabled]="methodSaving()"
+                (click)="cancelMethodDeletion()"
+              >
+                Cancelar
+              </button>
+              <button
+                class="btn btn-danger"
+                type="button"
+                [disabled]="methodSaving()"
+                (click)="confirmMethodDeletion()"
+              >
+                {{ methodSaving() ? 'Eliminando...' : 'Eliminar' }}
+              </button>
+            </div>
+          </section>
+        </div>
+      }
+      @if (pendingParameterDeletion(); as parameter) {
+        <div
+          class="attribute-modal-backdrop"
+          role="presentation"
+          (click)="cancelParameterDeletion()"
+        >
+          <section
+            class="attribute-modal"
+            role="dialog"
+            aria-modal="true"
+            (click)="$event.stopPropagation()"
+          >
+            <div class="attribute-modal-icon">!</div>
+            <h2>Eliminar parámetro</h2>
+            <p>¿Seguro que deseas eliminar el parámetro “{{ parameter.name }}”?</p>
+            <small>Esta acción no se puede deshacer.</small>
+            <div class="attribute-modal-actions">
+              <button
+                class="btn btn-ghost"
+                type="button"
+                [disabled]="methodSaving()"
+                (click)="cancelParameterDeletion()"
+              >
+                Cancelar
+              </button>
+              <button
+                class="btn btn-danger"
+                type="button"
+                [disabled]="methodSaving()"
+                (click)="confirmParameterDeletion()"
+              >
+                {{ methodSaving() ? 'Eliminando...' : 'Eliminar' }}
+              </button>
+            </div>
+          </section>
         </div>
       }
       @if (pendingAttributeDeletion(); as attribute) {

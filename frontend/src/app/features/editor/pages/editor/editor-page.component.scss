@@ -406,15 +406,13 @@
 .advanced-options {
   display: grid;
   gap: 8px;
-  margin-top: 4px;
 }
-.advanced-options > label:not(:last-child) {
+.advanced-options > label:not(.advanced-default-value) {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.advanced-options > label:not(:last-child) input[type='checkbox'] {
-  flex: 0 0 auto;
+.advanced-options > label:not(.advanced-default-value) input[type='checkbox'] {
   width: 16px;
   height: 16px;
   margin: 0;

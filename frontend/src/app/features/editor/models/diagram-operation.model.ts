@@ -64,13 +64,64 @@ export interface RemoveAttributePayload {
   attributeId: string;
 }
 
+export interface AddMethodPayload {
+  classId: string;
+  method: import('./diagram.model').UmlMethod;
+}
+
+export interface UpdateMethodPayload {
+  classId: string;
+  methodId: string;
+  name: string;
+  returnType: string;
+  visibility: string;
+  isStatic: boolean;
+}
+
+export interface RemoveMethodPayload {
+  classId: string;
+  methodId: string;
+}
+
+export interface AddParameterPayload {
+  classId: string;
+  methodId: string;
+  parameter: import('./diagram.model').UmlParameter;
+}
+
+export interface UpdateParameterPayload {
+  classId: string;
+  methodId: string;
+  parameterId: string;
+  name: string;
+  type: string;
+}
+
+export interface RemoveParameterPayload {
+  classId: string;
+  methodId: string;
+  parameterId: string;
+}
+
 export interface DiagramOperation {
   operationId: string;
   diagramId: string;
   userId: string;
   baseVersion: number;
   type: DiagramOperationType;
-  payload: CreateClassPayload | RenameClassPayload | MoveClassPayload | AddAttributePayload | UpdateAttributePayload | RemoveAttributePayload;
+  payload:
+    | CreateClassPayload
+    | RenameClassPayload
+    | MoveClassPayload
+    | AddAttributePayload
+    | UpdateAttributePayload
+    | RemoveAttributePayload
+    | AddMethodPayload
+    | UpdateMethodPayload
+    | RemoveMethodPayload
+    | AddParameterPayload
+    | UpdateParameterPayload
+    | RemoveParameterPayload;
 }
 
 export interface ExecuteDiagramOperationRequest {
