@@ -5,8 +5,9 @@
       <h1>Buenos días, María <b>✦</b></h1>
       <p>Diseña, colabora y construye algo increíble hoy.</p>
     </div>
-    <button class="btn btn-primary">＋ Nuevo proyecto</button>
+    <button class="btn btn-primary" (click)="openCreate()">＋ Nuevo proyecto</button>
   </div>
+
   <div class="tip">
     <span class="tip-icon">✧</span>
     <div>
@@ -15,6 +16,7 @@
     </div>
     <a routerLink="/projects">Ver proyectos　›</a>
   </div>
+
   <div class="section-head">
     <div>
       <h2>Mis proyectos</h2>
@@ -26,14 +28,24 @@
         <input
           [value]="query()"
           (input)="query.set($any($event.target).value)"
-          placeholder="Buscar proyectos..." /></label
-      ><a routerLink="/projects" class="muted">Ver todos　›</a>
+          placeholder="Buscar proyectos..."
+      /></label>
+      <a routerLink="/projects" class="muted">Ver todos　›</a>
     </div>
   </div>
+
+  @if (loading()) {
+    <p class="muted state-message">Cargando proyectos...</p>
+  } @else if (error()) {
+    <p class="state-message error-message">{{ error() }}</p>
+  } @else if (filtered().length === 0) {
+    <p class="muted state-message">No hay proyectos para mostrar.</p>
+  }
+
   <div class="cards-grid project-grid">
     @for (project of filtered(); track project.id) {
       <article class="card project-card">
-        <div class="project-cover" [class]="project.color">
+        <div class="project-cover lavender">
           <span class="cover-shape">◇</span><span class="tag">UML</span>
         </div>
         <div class="project-body">
@@ -41,19 +53,43 @@
             <h3>{{ project.name }}</h3>
             <span>•••</span>
           </div>
-          <p>{{ project.classes }} clases · Editado {{ project.edited }}</p>
+          <p>
+            {{ project.description || 'Proyecto UML' }} · Actualizado
+            {{ formatDate(project.updatedAt) }}
+          </p>
           <div class="project-foot">
-            <div class="avatars">
-              @for (avatar of project.avatars; track avatar; let i = $index) {
-                <span class="avatar" [class.rose]="i === 0" [class.sky]="i === 1">{{
-                  avatar
-                }}</span>
-              }
-            </div>
+            <div class="avatars"><span class="avatar rose">SW</span></div>
             <a [routerLink]="['/projects', project.id]">Abrir proyecto　›</a>
           </div>
         </div>
       </article>
     }
   </div>
+
+  @if (showCreate()) {
+    <div class="create-panel">
+      <div class="panel-heading">
+        <h2>Nuevo proyecto</h2>
+        <button class="btn btn-ghost" (click)="closeCreate()">×</button>
+      </div>
+      <label
+        >Nombre<input [value]="createName()" (input)="createName.set($any($event.target).value)"
+      /></label>
+      <label
+        >Descripción<textarea
+          [value]="createDescription()"
+          (input)="createDescription.set($any($event.target).value)"
+        ></textarea>
+      </label>
+      @if (createError()) {
+        <p class="error-message">{{ createError() }}</p>
+      }
+      <div class="panel-actions">
+        <button class="btn btn-ghost" (click)="closeCreate()">Cancelar</button
+        ><button class="btn btn-primary" [disabled]="creating()" (click)="createProject()">
+          {{ creating() ? 'Guardando...' : 'Crear proyecto' }}
+        </button>
+      </div>
+    </div>
+  }
 </div>

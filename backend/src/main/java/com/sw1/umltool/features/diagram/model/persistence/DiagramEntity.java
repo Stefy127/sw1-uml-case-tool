@@ -3,7 +3,6 @@ package com.sw1.umltool.features.diagram.model.persistence;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -35,11 +34,9 @@ public class DiagramEntity {
     @Column(nullable = false)
     private long version;
 
-    @Lob
     @Column(name = "canonical_model_json", nullable = false, columnDefinition = "TEXT")
     private String canonicalModelJson;
 
-    @Lob
     @Column(name = "view_state_json", nullable = false, columnDefinition = "TEXT")
     private String viewStateJson;
 

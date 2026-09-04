@@ -4,7 +4,8 @@
       >← <span class="brand-mark">S</span><b>SW1</b> UML　›</a
     >
     <div class="editor-title">
-      <b>Sistema de Biblioteca</b><span>Guardado hace un momento</span>
+      <b>{{ loading() ? 'Cargando...' : (diagram()?.name ?? 'Diagrama') }}</b
+      ><span>{{ error() || 'Guardado · versión ' + (diagram()?.version ?? '—') }}</span>
     </div>
     <div class="editor-actions">
       <span class="avatar rose">MG</span><span class="avatar sky">JR</span

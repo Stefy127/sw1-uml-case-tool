@@ -1,5 +1,8 @@
-import { Component } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Component, inject, signal } from '@angular/core';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+
+import { DiagramDetail } from '../../models/diagram.model';
+import { DiagramService } from '../../services/diagram.service';
 
 @Component({
   selector: 'app-editor-page',
@@ -8,6 +11,11 @@ import { RouterLink } from '@angular/router';
   styleUrl: './editor-page.component.scss',
 })
 export class EditorPageComponent {
+  private readonly route = inject(ActivatedRoute);
+  private readonly diagramService = inject(DiagramService);
+  readonly diagram = signal<DiagramDetail | null>(null);
+  readonly loading = signal(true);
+  readonly error = signal('');
   tab = 'Propiedades';
   tools = ['⌁', '□', '⌁', '◇', '◈', '↗'];
   classes = [
@@ -40,4 +48,23 @@ export class EditorPageComponent {
       methods: ['estáVencido()'],
     },
   ];
+
+  constructor() {
+    const diagramId = this.route.snapshot.paramMap.get('diagramId');
+    if (!diagramId) {
+      this.error.set('No se pudo identificar el diagrama.');
+      this.loading.set(false);
+      return;
+    }
+    this.diagramService.getDiagramById(diagramId).subscribe({
+      next: (diagram) => {
+        this.diagram.set(diagram);
+        this.loading.set(false);
+      },
+      error: () => {
+        this.error.set('No se pudo cargar el diagrama.');
+        this.loading.set(false);
+      },
+    });
+  }
 }
