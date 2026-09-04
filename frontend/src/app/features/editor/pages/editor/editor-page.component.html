@@ -17,7 +17,13 @@
   <div class="editor-body">
     <aside class="toolbar">
       @for (tool of tools; track $index) {
-        <button [class.active]="$index === 0">
+        <button
+          [class.active]="
+            ($index === 0 && activeTool() === 'SELECT') ||
+            ($index === 1 && activeTool() === 'CLASS')
+          "
+          (click)="$index === 0 ? setActiveTool('SELECT') : $index === 1 && setActiveTool('CLASS')"
+        >
           <span>{{ tool }}</span
           ><small>{{
             ['Seleccionar', 'Clase', 'Relación', 'Agregación', 'Composición', 'Herencia'][$index]
@@ -29,7 +35,14 @@
       <button>⌫<small>Eliminar</small></button><button class="zoom">⊕<small>100%</small></button>
     </aside>
 
-    <main class="canvas">
+    <main
+      class="canvas"
+      [class.insertion-mode]="activeTool() === 'CLASS'"
+      (click)="onCanvasClick($event)"
+      (pointermove)="onCanvasPointerMove($event)"
+      (pointerup)="onCanvasPointerUp($event)"
+      (pointercancel)="onCanvasPointerCancel($event)"
+    >
       <div class="live">● En vivo · 2 colaboradores</div>
       <div class="canvas-actions">◴　⇩　▣</div>
       @if (loading()) {
@@ -42,13 +55,34 @@
       @for (item of renderedClasses(); track item.umlClass.id) {
         <article
           class="uml-class"
+          [class.selected]="item.umlClass.id === selectedClassId()"
+          [class.dragging]="dragState()?.classId === item.umlClass.id && dragState()?.isDragging"
+          (click)="selectClass(item.umlClass, $event)"
+          (pointerdown)="onClassPointerDown(item.umlClass, $event)"
           [style.left.px]="item.x"
           [style.top.px]="item.y"
           [style.width.px]="item.width"
           [style.min-height.px]="item.height"
         >
           <header>
-            <b [class.abstract-name]="isAbstract(item.umlClass)">{{ item.umlClass.name }}</b>
+            @if (editingClassId() === item.umlClass.id) {
+              <input
+                class="inline-name"
+                [attr.data-class-name]="item.umlClass.id"
+                [value]="editingName()"
+                (input)="editingName.set($any($event.target).value)"
+                (click)="$event.stopPropagation()"
+                (keydown.enter)="confirmInlineEdit()"
+                (keydown.escape)="cancelInlineEdit()"
+                (blur)="confirmInlineEdit()"
+              />
+            } @else {
+              <b
+                [class.abstract-name]="isAbstract(item.umlClass)"
+                (dblclick)="beginInlineEdit(item.umlClass.id); $event.stopPropagation()"
+                >{{ item.umlClass.name }}</b
+              >
+            }
             <span>•••</span>
             <small>{{ isAbstract(item.umlClass) ? 'Abstracta' : 'Entidad' }}</small>
           </header>

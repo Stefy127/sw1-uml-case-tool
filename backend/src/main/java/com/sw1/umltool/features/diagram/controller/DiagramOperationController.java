@@ -3,6 +3,7 @@ package com.sw1.umltool.features.diagram.controller;
 import com.sw1.umltool.features.diagram.dto.ExecuteDiagramOperationRequest;
 import com.sw1.umltool.features.diagram.dto.OperationExecutionResponse;
 import com.sw1.umltool.features.diagram.service.PersistentDiagramOperationService;
+import com.sw1.umltool.features.diagram.operation.DiagramOperationPayloadMapper;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,9 +17,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class DiagramOperationController {
 
     private final PersistentDiagramOperationService persistentDiagramOperationService;
+    private final DiagramOperationPayloadMapper payloadMapper;
 
-    public DiagramOperationController(PersistentDiagramOperationService persistentDiagramOperationService) {
+    public DiagramOperationController(PersistentDiagramOperationService persistentDiagramOperationService,
+                                      DiagramOperationPayloadMapper payloadMapper) {
         this.persistentDiagramOperationService = persistentDiagramOperationService;
+        this.payloadMapper = payloadMapper;
     }
 
     @PostMapping
@@ -26,6 +30,6 @@ public class DiagramOperationController {
             @PathVariable String diagramId,
             @Valid @RequestBody ExecuteDiagramOperationRequest request) {
         return ResponseEntity.ok(OperationExecutionResponse.from(
-                persistentDiagramOperationService.execute(diagramId, request.getOperation())));
+                persistentDiagramOperationService.execute(diagramId, payloadMapper.map(request.getOperation()))));
     }
 }
