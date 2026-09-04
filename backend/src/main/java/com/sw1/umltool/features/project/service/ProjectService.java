@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -47,6 +49,16 @@ public class ProjectService {
                 .build());
 
         return savedProject;
+    }
+
+    public List<ProjectEntity> findByOwnerUserId(String ownerUserId) {
+        if (isBlank(ownerUserId)) throw new IllegalArgumentException("Owner user id is required");
+        return projectRepository.findByOwnerUserId(ownerUserId);
+    }
+
+    public Optional<ProjectEntity> findById(String id) {
+        if (isBlank(id)) throw new IllegalArgumentException("Project id is required");
+        return projectRepository.findById(id);
     }
 
     private boolean isBlank(String value) {

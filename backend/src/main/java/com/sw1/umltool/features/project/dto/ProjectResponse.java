@@ -1,0 +1,22 @@
+package com.sw1.umltool.features.project.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ProjectResponse {
+
+    private String id;
+    private String name;
+    private String description;
+    private String ownerUserId;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}

@@ -1,0 +1,31 @@
+package com.sw1.umltool.features.diagram.controller;
+
+import com.sw1.umltool.features.diagram.dto.ExecuteDiagramOperationRequest;
+import com.sw1.umltool.features.diagram.dto.OperationExecutionResponse;
+import com.sw1.umltool.features.diagram.service.PersistentDiagramOperationService;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/diagrams/{diagramId}/operations")
+public class DiagramOperationController {
+
+    private final PersistentDiagramOperationService persistentDiagramOperationService;
+
+    public DiagramOperationController(PersistentDiagramOperationService persistentDiagramOperationService) {
+        this.persistentDiagramOperationService = persistentDiagramOperationService;
+    }
+
+    @PostMapping
+    public ResponseEntity<OperationExecutionResponse> execute(
+            @PathVariable String diagramId,
+            @Valid @RequestBody ExecuteDiagramOperationRequest request) {
+        return ResponseEntity.ok(OperationExecutionResponse.from(
+                persistentDiagramOperationService.execute(diagramId, request.getOperation())));
+    }
+}
