@@ -1,0 +1,72 @@
+<div class="page detail">
+  <a routerLink="/projects" class="back">←　Mis proyectos</a>
+  <div class="detail-heading">
+    <div>
+      <div class="title-line">
+        <span class="project-symbol">◇</span>
+        <div>
+          <h1>Sistema de Biblioteca</h1>
+          <p class="muted">Última edición hace 2 horas · 12 clases · 18 relaciones</p>
+        </div>
+      </div>
+    </div>
+    <div class="detail-actions">
+      <button class="btn btn-soft">♧　Compartir</button
+      ><a routerLink="/editor/library" class="btn btn-primary">⌁　Abrir editor</a>
+    </div>
+  </div>
+  <div class="detail-layout">
+    <section>
+      <div class="diagram-preview">
+        <div class="mini-class one">
+          <b>Usuario</b><span>+ nombre: String</span><span>+ prestar()</span>
+        </div>
+        <div class="mini-class two">
+          <b>Libro</b><span>+ título: String</span><span>+ disponible: Bool</span>
+        </div>
+        <div class="mini-class three"><b>Préstamo</b><span>+ fecha: Date</span></div>
+        <i class="line l1"></i><i class="line l2"></i>
+      </div>
+      <div class="diagram-list">
+        <div class="list-heading">
+          <div>
+            <h2>Diagramas del proyecto</h2>
+            <p class="muted">Explora y continúa trabajando en tu modelo</p>
+          </div>
+          <button class="btn btn-primary">＋ Nuevo diagrama</button>
+        </div>
+        @for (diagram of diagrams; track diagram; let i = $index) {
+          <a class="diagram-row" routerLink="/editor/library"
+            ><span class="diagram-icon">◇</span
+            ><span
+              ><strong>{{ diagram }}</strong
+              ><small>Actualizado hace {{ i + 1 }} horas · 12 clases</small></span
+            ><span class="row-arrow">›</span></a
+          >
+        }
+      </div>
+    </section>
+    <aside class="side-cards">
+      <div class="card collaborators">
+        <div class="side-title">
+          <h3>Colaboradores</h3>
+          <span>♙</span>
+        </div>
+        <div class="person">
+          <span class="avatar rose">MG</span
+          ><span><b>María García</b><small>Propietaria</small></span
+          ><i class="online"></i>
+        </div>
+        <div class="person">
+          <span class="avatar sky">JR</span><span><b>Juan Rodríguez</b><small>Editor</small></span
+          ><i></i>
+        </div>
+      </div>
+      <div class="card activity">
+        <h3>Actividad del proyecto</h3>
+        <p><b>＋</b> Préstamo fue añadido<small>Hace 2 horas</small></p>
+        <p><b>⌁</b> Relación actualizada<small>Ayer a las 16:20</small></p>
+      </div>
+    </aside>
+  </div>
+</div>

@@ -1,0 +1,78 @@
+<div class="page appearance">
+  <div class="appearance-heading">
+    <div>
+      <span class="eyebrow">PREFERENCIAS</span>
+      <h1>Personaliza tu espacio</h1>
+      <p class="muted">Ajusta los colores y preferencias del editor.</p>
+    </div>
+    <button class="btn btn-outline" (click)="theme.restore()">↺　Restaurar tema</button>
+  </div>
+  <section class="appearance-section">
+    <div class="section-intro">
+      <h2>Paleta</h2>
+      <p class="muted">Elige una atmósfera para tu espacio de trabajo.</p>
+    </div>
+    <div class="palette-grid">
+      @for (preset of theme.presets; track preset.name) {
+        <button
+          class="palette"
+          [class.selected]="theme.active() === preset.name"
+          (click)="theme.select(preset)"
+        >
+          <span class="swatches"
+            ><i [style.background]="preset.colors['primary']"></i
+            ><i [style.background]="preset.colors['secondary']"></i
+            ><i [style.background]="preset.colors['classHeader']"></i></span
+          ><b>{{ preset.name }}</b
+          ><small>{{ theme.active() === preset.name ? 'Activo' : 'Aplicar tema' }}</small>
+        </button>
+      }
+    </div>
+  </section>
+  <section class="appearance-section custom-section">
+    <div class="section-intro">
+      <h2>Colores personalizados</h2>
+      <p class="muted">Ajusta cada detalle y mira los cambios en tiempo real.</p>
+    </div>
+    <div class="color-fields">
+      @for (key of keys; track key) {
+        <label
+          >{{ labels[key]
+          }}<span
+            ><input
+              type="color"
+              [value]="theme.custom()[key]"
+              (input)="theme.setCustomColor(key, $any($event.target).value)"
+            /><code>{{ theme.custom()[key] }}</code></span
+          ></label
+        >
+      }
+    </div>
+  </section>
+  <section class="appearance-section preview-section">
+    <div class="section-intro">
+      <h2>Vista previa</h2>
+      <p class="muted">Así se verá tu espacio de trabajo.</p>
+    </div>
+    <div class="preview">
+      <aside>
+        <div class="preview-brand"><span>S</span><b>SW1</b></div>
+        <p class="preview-active">▦　Dashboard</p>
+        <p>▱　Mis proyectos</p>
+        <p>◌　Apariencia</p>
+      </aside>
+      <div class="preview-main">
+        <div class="preview-top">
+          <span>Buenos días, María</span><button class="btn btn-primary">＋ Nuevo</button>
+        </div>
+        <div class="preview-card">
+          <span class="preview-shape">◇</span>
+          <div><b>Sistema de Biblioteca</b><small>12 clases · Editado hoy</small></div>
+        </div>
+        <div class="preview-class">
+          <b>Cliente</b><span>- nombre: String</span><span>+ comprar()</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>

@@ -1,0 +1,59 @@
+<div class="page dashboard">
+  <div class="welcome">
+    <div>
+      <span class="eyebrow">MARTES, 18 DE JUNIO DE 2024</span>
+      <h1>Buenos días, María <b>✦</b></h1>
+      <p>Diseña, colabora y construye algo increíble hoy.</p>
+    </div>
+    <button class="btn btn-primary">＋ Nuevo proyecto</button>
+  </div>
+  <div class="tip">
+    <span class="tip-icon">✧</span>
+    <div>
+      <strong>Tu espacio creativo está listo</strong>
+      <p>Continúa donde lo dejaste o empieza un nuevo diseño desde cero.</p>
+    </div>
+    <a routerLink="/projects">Ver proyectos　›</a>
+  </div>
+  <div class="section-head">
+    <div>
+      <h2>Mis proyectos</h2>
+      <p class="muted">Tus espacios de trabajo recientes</p>
+    </div>
+    <div class="head-actions">
+      <label class="search-box"
+        >⌕
+        <input
+          [value]="query()"
+          (input)="query.set($any($event.target).value)"
+          placeholder="Buscar proyectos..." /></label
+      ><a routerLink="/projects" class="muted">Ver todos　›</a>
+    </div>
+  </div>
+  <div class="cards-grid project-grid">
+    @for (project of filtered(); track project.id) {
+      <article class="card project-card">
+        <div class="project-cover" [class]="project.color">
+          <span class="cover-shape">◇</span><span class="tag">UML</span>
+        </div>
+        <div class="project-body">
+          <div class="project-title">
+            <h3>{{ project.name }}</h3>
+            <span>•••</span>
+          </div>
+          <p>{{ project.classes }} clases · Editado {{ project.edited }}</p>
+          <div class="project-foot">
+            <div class="avatars">
+              @for (avatar of project.avatars; track avatar; let i = $index) {
+                <span class="avatar" [class.rose]="i === 0" [class.sky]="i === 1">{{
+                  avatar
+                }}</span>
+              }
+            </div>
+            <a [routerLink]="['/projects', project.id]">Abrir proyecto　›</a>
+          </div>
+        </div>
+      </article>
+    }
+  </div>
+</div>

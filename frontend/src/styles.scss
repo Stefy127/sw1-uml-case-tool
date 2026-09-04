@@ -1,1 +1,174 @@
-/* You can add global styles to this file, and also import other style files */
+:root {
+  --color-primary: #7564dc;
+  --color-primary-soft: #eeeaff;
+  --color-secondary: #8b9bef;
+  --color-accent: #ef9fbe;
+  --color-background: #fbfaff;
+  --color-surface: #fff;
+  --color-surface-alt: #f5f3ff;
+  --color-canvas: #fcfbff;
+  --color-border: #e9e7f1;
+  --color-text: #1d2942;
+  --color-text-muted: #8290aa;
+  --color-success: #69c7a1;
+  --color-warning: #f3bf77;
+  --color-danger: #e887a2;
+  --color-class-header: #eeeaff;
+  --shadow-sm: 0 4px 14px rgba(45, 48, 90, 0.05);
+  --shadow-md: 0 14px 36px rgba(45, 48, 90, 0.09);
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: Inter, 'Segoe UI', sans-serif;
+}
+button,
+input,
+textarea {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+h1,
+h2,
+h3 {
+  font-family: Poppins, Inter, sans-serif;
+  letter-spacing: -0.035em;
+}
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 38px 42px 56px;
+}
+.eyebrow,
+.section-label {
+  color: #9aa5bb;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.muted {
+  color: var(--color-text-muted);
+}
+.btn {
+  border: 0;
+  border-radius: 11px;
+  padding: 12px 17px;
+  font-weight: 700;
+  transition: 0.2s ease;
+}
+.btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(0.99);
+}
+.btn-primary {
+  color: #fff;
+  background: var(--color-primary);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+.btn-soft {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.btn-ghost {
+  color: var(--color-text-muted);
+  background: transparent;
+}
+.btn-outline {
+  color: var(--color-primary);
+  background: #fff;
+  border: 1px solid var(--color-border);
+}
+.icon {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-size: 18px;
+}
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-alt);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 11px 14px;
+}
+.search-box input {
+  min-width: 180px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text);
+}
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 31px;
+  height: 31px;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--color-primary);
+  border: 2px solid #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+.avatar.rose {
+  background: #e99ab9;
+}
+.avatar.sky {
+  background: #8ecde4;
+}
+.avatar.mint {
+  background: #78c9ae;
+}
+@media (max-width: 900px) {
+  .cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .page {
+    padding: 28px 24px;
+  }
+}
+@media (max-width: 620px) {
+  .cards-grid {
+    grid-template-columns: 1fr;
+  }
+  .page {
+    padding: 22px 16px;
+  }
+}

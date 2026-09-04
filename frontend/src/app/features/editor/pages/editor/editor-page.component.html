@@ -1,0 +1,106 @@
+<div class="editor">
+  <header class="editor-head">
+    <a routerLink="/projects" class="editor-brand"
+      >← <span class="brand-mark">S</span><b>SW1</b> UML　›</a
+    >
+    <div class="editor-title">
+      <b>Sistema de Biblioteca</b><span>Guardado hace un momento</span>
+    </div>
+    <div class="editor-actions">
+      <span class="avatar rose">MG</span><span class="avatar sky">JR</span
+      ><button class="btn btn-soft">♧　Compartir</button
+      ><button class="btn btn-primary">&lt;/&gt;　Generar backend</button>
+    </div>
+  </header>
+  <div class="editor-body">
+    <aside class="toolbar">
+      @for (tool of tools; track $index) {
+        <button [class.active]="$index === 0">
+          <span>{{ tool }}</span
+          ><small>{{
+            ['Seleccionar', 'Clase', 'Relación', 'Agregación', 'Composición', 'Herencia'][$index]
+          }}</small>
+        </button>
+      }
+      <hr />
+      <button>↥<small>Importar</small></button><button>♩<small>Voz</small></button
+      ><button>⌫<small>Eliminar</small></button><button class="zoom">⊕<small>100%</small></button>
+    </aside>
+    <main class="canvas">
+      <div class="live">●　En vivo · 2 colaboradores</div>
+      <div class="canvas-actions">◴　⇩　▣</div>
+      <div class="relations"><i></i><i></i><i></i></div>
+      @for (item of classes; track item.name) {
+        <article
+          class="uml-class"
+          [style.left]="item.x"
+          [style.top]="item.y"
+          [class.selected]="item.name === 'Usuario'"
+        >
+          <header>
+            <b>{{ item.name }}</b
+            ><span>•••</span><small>Entidad</small>
+          </header>
+          <div class="uml-lines">
+            @for (attr of item.attrs; track attr) {
+              <span>- {{ attr }}</span>
+            }
+          </div>
+          <div class="uml-lines methods">
+            @for (method of item.methods; track method) {
+              <span>+ {{ method }}</span>
+            }
+          </div>
+        </article>
+      }
+    </main>
+    <aside class="inspector">
+      <div class="tabs">
+        @for (tabName of ['Propiedades', 'IA', 'Historial']; track tabName) {
+          <button [class.active]="tab === tabName" (click)="tab = tabName">
+            {{ tabName }}
+            @if (tabName === 'IA') {
+              <em>AI</em>
+            }
+          </button>
+        }
+      </div>
+      @if (tab === 'Propiedades') {
+        <div class="inspect-content">
+          <span class="section-label">Elemento seleccionado</span>
+          <div class="selected-name"><span>◇</span><b>Usuario</b><small>Clase pública</small></div>
+          <label>Nombre de clase<input value="Usuario" /></label
+          ><label
+            >Descripción<textarea>
+Representa a una persona registrada en el sistema.</textarea></label
+          ><span class="section-label">Atributos　<span>3</span></span>
+          <p class="property-line">◆　id : UUID　···</p>
+          <p class="property-line">◆　nombre : String　···</p>
+          <p class="property-line">◆　email : String　···</p>
+        </div>
+      }
+      @if (tab === 'IA') {
+        <div class="ai-panel">
+          <span class="section-label">Asistente de diseño</span>
+          <div class="bubble user">Crea una clase Cliente con nombre y correo</div>
+          <div class="bubble">
+            <b>IA</b> Se crearán:<br />· Cliente<br />· nombre: String<br />· correo: String
+          </div>
+          <div class="ai-actions">
+            <button class="btn btn-soft">Simular</button
+            ><button class="btn btn-primary">Aplicar</button
+            ><button class="btn btn-ghost">Cancelar</button>
+          </div>
+        </div>
+      }
+      @if (tab === 'Historial') {
+        <div class="history">
+          <span class="section-label">Actividad reciente</span>
+          <p><b>Stephanie</b> creó clase Cliente<small>Hace 4 min</small></p>
+          <p><b>Andres</b> agregó atributo email<small>Hace 18 min</small></p>
+          <p><b>Diego</b> movió Pedido<small>Ayer</small></p>
+        </div>
+      }
+    </aside>
+  </div>
+</div>

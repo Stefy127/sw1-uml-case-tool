@@ -1,0 +1,51 @@
+<div class="shell" [class.collapsed]="collapsed">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">S</span><span class="brand-name"><strong>SW1</strong> UML</span
+      ><button class="collapse" (click)="collapsed = !collapsed">☰</button>
+    </div>
+    <div class="nav-group">
+      <span class="nav-title">Workspace</span>
+      @for (item of nav; track item.label) {
+        <a
+          class="nav-item"
+          [routerLink]="item.link"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="{ exact: item.label === 'Dashboard' }"
+          ><span class="nav-icon">{{ item.icon }}</span
+          ><span>{{ item.label }}</span>
+          @if (item.label === 'Mis proyectos') {
+            <small>4</small>
+          }
+        </a>
+      }
+    </div>
+    <div class="nav-group tools">
+      <span class="nav-title">Herramientas</span
+      ><a class="nav-item" routerLink="/projects"
+        ><span class="nav-icon">⊞</span><span>Importar diagrama</span></a
+      ><a class="nav-item" routerLink="/editor/demo"
+        ><span class="nav-icon">&lt;/&gt;</span><span>Generar backend</span></a
+      ><a class="nav-item" routerLink="/settings/appearance"
+        ><span class="nav-icon">◌</span><span>Apariencia</span></a
+      >
+    </div>
+    <div class="sidebar-foot">
+      <a class="nav-item" routerLink="/projects"
+        ><span class="nav-icon">?</span><span>Ayuda y recursos</span></a
+      ><a class="nav-item" routerLink="/settings/appearance"
+        ><span class="nav-icon">⚙</span><span>Configuración</span></a
+      >
+    </div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <button class="mobile-menu" (click)="collapsed = !collapsed">☰</button>
+      <div class="top-search">⌕ <span>Buscar proyectos...</span></div>
+      <div class="top-actions">
+        <span class="bell">♧</span><span class="avatar rose">MG</span><span class="chevron">⌄</span>
+      </div>
+    </header>
+    <router-outlet />
+  </main>
+</div>
