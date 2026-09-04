@@ -25,18 +25,16 @@ desktop.ini
 
 .vscode/
 .idea/
-
 *.iml
 
 
 # ==========================================
-# NODE / FRONTEND
+# NODE / ANGULAR
 # ==========================================
 
 node_modules/
 dist/
 .angular/
-.next/
 coverage/
 
 npm-debug.log*
@@ -46,14 +44,13 @@ pnpm-debug.log*
 
 
 # ==========================================
-# JAVA / SPRING BOOT
+# JAVA / SPRING BOOT / MAVEN
 # ==========================================
 
 target/
 build/
 
 *.class
-*.jar
 *.war
 *.ear
 
@@ -61,7 +58,7 @@ build/
 
 
 # ==========================================
-# PYTHON - por si alguna utilidad futura usa Python
+# PYTHON
 # ==========================================
 
 __pycache__/
@@ -82,8 +79,6 @@ venv/
 .pub-cache/
 .pub/
 
-build/
-
 android/.gradle/
 android/local.properties
 
@@ -92,13 +87,25 @@ ios/.symlinks/
 
 
 # ==========================================
-# TEMPORALES / GENERADOS
+# TEMPORALES / RESPALDOS
 # ==========================================
 
 tmp/
 temp/
+
 *.tmp
 *.log
+
+frontend-backup/
+spring-temp/
+
+*-old
+*.old
+
+
+# ==========================================
+# ARCHIVOS GENERADOS POR LA HERRAMIENTA
+# ==========================================
 
 generated/
 exports/
