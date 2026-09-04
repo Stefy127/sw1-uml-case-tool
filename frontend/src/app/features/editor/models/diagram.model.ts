@@ -23,7 +23,9 @@ export interface UmlDiagram {
 export interface UmlClass {
   id: string;
   name: string;
-  abstract: boolean;
+  isAbstract: boolean;
+  /** Jackson may expose Lombok boolean accessors without the `is` prefix. */
+  abstract?: boolean;
   attributes: UmlAttribute[];
   methods: UmlMethod[];
 }
@@ -33,8 +35,10 @@ export interface UmlAttribute {
   name: string;
   type: string;
   visibility: string;
-  static: boolean;
-  final: boolean;
+  isStatic: boolean;
+  isFinal: boolean;
+  static?: boolean;
+  final?: boolean;
   defaultValue: string | null;
   primaryKey: boolean;
 }
@@ -44,7 +48,8 @@ export interface UmlMethod {
   name: string;
   returnType: string;
   visibility: string;
-  static: boolean;
+  isStatic: boolean;
+  static?: boolean;
   parameters: UmlParameter[];
 }
 

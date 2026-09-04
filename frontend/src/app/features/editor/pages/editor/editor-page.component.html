@@ -1,18 +1,19 @@
 <div class="editor">
   <header class="editor-head">
     <a routerLink="/projects" class="editor-brand"
-      >← <span class="brand-mark">S</span><b>SW1</b> UML　›</a
+      >← <span class="brand-mark">S</span><b>SW1</b> UML ›</a
     >
     <div class="editor-title">
-      <b>{{ loading() ? 'Cargando...' : (diagram()?.name ?? 'Diagrama') }}</b
-      ><span>{{ error() || 'Guardado · versión ' + (diagram()?.version ?? '—') }}</span>
+      <b>{{ loading() ? 'Cargando...' : (diagram()?.name ?? 'Diagrama') }}</b>
+      <span>{{ error() || 'Guardado · versión ' + (diagram()?.version ?? '—') }}</span>
     </div>
     <div class="editor-actions">
-      <span class="avatar rose">MG</span><span class="avatar sky">JR</span
-      ><button class="btn btn-soft">♧　Compartir</button
-      ><button class="btn btn-primary">&lt;/&gt;　Generar backend</button>
+      <span class="avatar rose">MG</span><span class="avatar sky">JR</span>
+      <button class="btn btn-soft">♧ Compartir</button>
+      <button class="btn btn-primary">&lt;/&gt; Generar backend</button>
     </div>
   </header>
+
   <div class="editor-body">
     <aside class="toolbar">
       @for (tool of tools; track $index) {
@@ -24,37 +25,60 @@
         </button>
       }
       <hr />
-      <button>↥<small>Importar</small></button><button>♩<small>Voz</small></button
-      ><button>⌫<small>Eliminar</small></button><button class="zoom">⊕<small>100%</small></button>
+      <button>↥<small>Importar</small></button><button>♩<small>Voz</small></button>
+      <button>⌫<small>Eliminar</small></button><button class="zoom">⊕<small>100%</small></button>
     </aside>
+
     <main class="canvas">
-      <div class="live">●　En vivo · 2 colaboradores</div>
+      <div class="live">● En vivo · 2 colaboradores</div>
       <div class="canvas-actions">◴　⇩　▣</div>
-      <div class="relations"><i></i><i></i><i></i></div>
-      @for (item of classes; track item.name) {
+      @if (loading()) {
+        <div class="canvas-state">Cargando diagrama...</div>
+      } @else if (error()) {
+        <div class="canvas-state error">{{ error() }}</div>
+      } @else if (renderedClasses().length === 0) {
+        <div class="canvas-state">Este diagrama aún no tiene clases</div>
+      }
+      @for (item of renderedClasses(); track item.umlClass.id) {
         <article
           class="uml-class"
-          [style.left]="item.x"
-          [style.top]="item.y"
-          [class.selected]="item.name === 'Usuario'"
+          [style.left.px]="item.x"
+          [style.top.px]="item.y"
+          [style.width.px]="item.width"
+          [style.min-height.px]="item.height"
         >
           <header>
-            <b>{{ item.name }}</b
-            ><span>•••</span><small>Entidad</small>
+            <b [class.abstract-name]="isAbstract(item.umlClass)">{{ item.umlClass.name }}</b>
+            <span>•••</span>
+            <small>{{ isAbstract(item.umlClass) ? 'Abstracta' : 'Entidad' }}</small>
           </header>
           <div class="uml-lines">
-            @for (attr of item.attrs; track attr) {
-              <span>- {{ attr }}</span>
+            @if (item.umlClass.attributes.length === 0) {
+              <span class="empty-line">Sin atributos</span>
+            }
+            @for (attribute of item.umlClass.attributes; track attribute.id) {
+              <span [class.static-member]="isStatic(attribute)"
+                >{{ visibilitySymbol(attribute.visibility) }} {{ formatAttribute(attribute) }}
+                @if (attribute.primaryKey) {
+                  <small class="pk">PK</small>
+                }
+              </span>
             }
           </div>
           <div class="uml-lines methods">
-            @for (method of item.methods; track method) {
-              <span>+ {{ method }}</span>
+            @if (item.umlClass.methods.length === 0) {
+              <span class="empty-line">Sin métodos</span>
+            }
+            @for (method of item.umlClass.methods; track method.id) {
+              <span [class.static-member]="isStatic(method)"
+                >{{ visibilitySymbol(method.visibility) }} {{ formatMethod(method) }}</span
+              >
             }
           </div>
         </article>
       }
     </main>
+
     <aside class="inspector">
       <div class="tabs">
         @for (tabName of ['Propiedades', 'IA', 'Historial']; track tabName) {
@@ -69,15 +93,17 @@
       @if (tab === 'Propiedades') {
         <div class="inspect-content">
           <span class="section-label">Elemento seleccionado</span>
-          <div class="selected-name"><span>◇</span><b>Usuario</b><small>Clase pública</small></div>
-          <label>Nombre de clase<input value="Usuario" /></label
-          ><label
-            >Descripción<textarea>
-Representa a una persona registrada en el sistema.</textarea></label
-          ><span class="section-label">Atributos　<span>3</span></span>
-          <p class="property-line">◆　id : UUID　···</p>
-          <p class="property-line">◆　nombre : String　···</p>
-          <p class="property-line">◆　email : String　···</p>
+          @if (renderedClasses()[0]; as selected) {
+            <div class="selected-name">
+              <span>◇</span><b>{{ selected.umlClass.name }}</b
+              ><small>Clase UML</small>
+            </div>
+            <span class="section-label"
+              >Atributos　<span>{{ selected.umlClass.attributes.length }}</span></span
+            >
+          } @else {
+            <p class="muted">Selecciona una clase para ver sus propiedades.</p>
+          }
         </div>
       }
       @if (tab === 'IA') {
@@ -97,9 +123,7 @@ Representa a una persona registrada en el sistema.</textarea></label
       @if (tab === 'Historial') {
         <div class="history">
           <span class="section-label">Actividad reciente</span>
-          <p><b>Stephanie</b> creó clase Cliente<small>Hace 4 min</small></p>
-          <p><b>Andres</b> agregó atributo email<small>Hace 18 min</small></p>
-          <p><b>Diego</b> movió Pedido<small>Ayer</small></p>
+          <p>Las operaciones del diagrama aparecerán aquí.<small>Historial próximamente</small></p>
         </div>
       }
     </aside>

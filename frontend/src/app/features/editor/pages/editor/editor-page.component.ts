@@ -1,8 +1,16 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
-import { DiagramDetail } from '../../models/diagram.model';
+import { DiagramDetail, UmlClass } from '../../models/diagram.model';
 import { DiagramService } from '../../services/diagram.service';
+
+interface RenderedUmlClass {
+  umlClass: UmlClass;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 @Component({
   selector: 'app-editor-page',
@@ -13,41 +21,28 @@ import { DiagramService } from '../../services/diagram.service';
 export class EditorPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly diagramService = inject(DiagramService);
+
   readonly diagram = signal<DiagramDetail | null>(null);
   readonly loading = signal(true);
   readonly error = signal('');
+  readonly renderedClasses = computed<RenderedUmlClass[]>(() => {
+    const currentDiagram = this.diagram();
+    const classes = currentDiagram?.canonicalModel?.classes ?? [];
+    const nodes = currentDiagram?.viewState?.nodes ?? [];
+
+    return classes.map((umlClass, index) => {
+      const node = nodes.find((candidate) => candidate.classId === umlClass.id);
+      return {
+        umlClass,
+        x: node?.x ?? 80 + index * 40,
+        y: node?.y ?? 80 + index * 40,
+        width: node?.width ?? 240,
+        height: node?.height ?? 180,
+      };
+    });
+  });
   tab = 'Propiedades';
   tools = ['⌁', '□', '⌁', '◇', '◈', '↗'];
-  classes = [
-    {
-      name: 'Usuario',
-      x: '8%',
-      y: '19%',
-      attrs: ['id: UUID', 'nombre: String', 'email: String'],
-      methods: ['prestar()', 'devolverLibro()'],
-    },
-    {
-      name: 'Libro',
-      x: '48%',
-      y: '10%',
-      attrs: ['isbn: String', 'título: String', 'disponible: Bool'],
-      methods: ['reservar()'],
-    },
-    {
-      name: 'Autor',
-      x: '76%',
-      y: '29%',
-      attrs: ['nombre: String', 'nacionalidad: String'],
-      methods: ['getLibros()'],
-    },
-    {
-      name: 'Préstamo',
-      x: '48%',
-      y: '57%',
-      attrs: ['fechaInicio: Date', 'fechaFin: Date'],
-      methods: ['estáVencido()'],
-    },
-  ];
 
   constructor() {
     const diagramId = this.route.snapshot.paramMap.get('diagramId');
@@ -66,5 +61,28 @@ export class EditorPageComponent {
         this.loading.set(false);
       },
     });
+  }
+
+  isAbstract(umlClass: UmlClass): boolean {
+    return umlClass.isAbstract ?? umlClass.abstract ?? false;
+  }
+
+  isStatic(member: { isStatic: boolean; static?: boolean }): boolean {
+    return member.isStatic ?? member.static ?? false;
+  }
+
+  visibilitySymbol(visibility: string | undefined): string {
+    return { PUBLIC: '+', PRIVATE: '-', PROTECTED: '#', PACKAGE: '~' }[visibility ?? ''] ?? '~';
+  }
+
+  formatAttribute(attribute: { name: string; type: string }): string {
+    return `${attribute.name}: ${attribute.type}`;
+  }
+
+  formatMethod(method: UmlClass['methods'][number]): string {
+    const parameters = method.parameters
+      .map((parameter) => `${parameter.name}: ${parameter.type}`)
+      .join(', ');
+    return `${method.name}(${parameters}): ${method.returnType}`;
   }
 }

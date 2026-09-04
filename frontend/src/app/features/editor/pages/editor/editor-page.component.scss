@@ -153,6 +153,9 @@
   font-size: 19px;
   color: var(--color-text);
 }
+.uml-class header b.abstract-name {
+  font-style: italic;
+}
 .uml-class header small {
   grid-column: 1/-1;
 }
@@ -161,28 +164,41 @@
   gap: 8px;
   padding: 14px 15px;
 }
+.empty-line {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+.static-member {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.pk {
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  font-size: 9px;
+  font-weight: 700;
+}
 .methods {
   border-top: 1px solid var(--color-border);
   color: var(--color-primary);
 }
-.relations i {
+.canvas-state {
   position: absolute;
-  width: 180px;
-  height: 1px;
-  background: #b6aaf0;
-  left: 26%;
-  top: 40%;
-  transform: rotate(-12deg);
+  top: 50%;
+  left: 50%;
+  padding: 14px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transform: translate(-50%, -50%);
+  font-size: 13px;
 }
-.relations i:nth-child(2) {
-  left: 55%;
-  top: 37%;
-  transform: rotate(18deg);
-}
-.relations i:nth-child(3) {
-  left: 38%;
-  top: 64%;
-  transform: rotate(5deg);
+.canvas-state.error {
+  color: var(--color-danger);
 }
 .inspector {
   width: 335px;
