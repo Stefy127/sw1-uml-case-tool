@@ -42,13 +42,35 @@ export interface MoveClassPayload {
   y: number;
 }
 
+export interface AddAttributePayload {
+  classId: string;
+  attribute: import('./diagram.model').UmlAttribute;
+}
+
+export interface UpdateAttributePayload {
+  classId: string;
+  attributeId: string;
+  name: string;
+  type: string;
+  visibility: string;
+  isStatic: boolean;
+  isFinal: boolean;
+  defaultValue: string | null;
+  primaryKey: boolean;
+}
+
+export interface RemoveAttributePayload {
+  classId: string;
+  attributeId: string;
+}
+
 export interface DiagramOperation {
   operationId: string;
   diagramId: string;
   userId: string;
   baseVersion: number;
   type: DiagramOperationType;
-  payload: CreateClassPayload | RenameClassPayload | MoveClassPayload;
+  payload: CreateClassPayload | RenameClassPayload | MoveClassPayload | AddAttributePayload | UpdateAttributePayload | RemoveAttributePayload;
 }
 
 export interface ExecuteDiagramOperationRequest {

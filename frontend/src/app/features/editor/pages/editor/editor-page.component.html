@@ -127,14 +127,148 @@
       @if (tab === 'Propiedades') {
         <div class="inspect-content">
           <span class="section-label">Elemento seleccionado</span>
-          @if (renderedClasses()[0]; as selected) {
+          @if (selectedClass(); as selected) {
             <div class="selected-name">
               <span>◇</span><b>{{ selected.umlClass.name }}</b
               ><small>Clase UML</small>
             </div>
-            <span class="section-label"
-              >Atributos　<span>{{ selected.umlClass.attributes.length }}</span></span
-            >
+            <div class="attributes-heading">
+              <span class="section-label"
+                >Atributos <span>{{ selected.umlClass.attributes.length }}</span></span
+              ><button
+                class="add-attribute"
+                type="button"
+                [disabled]="attributeSaving()"
+                (click)="startAddAttribute()"
+              >
+                ＋ Atributo
+              </button>
+            </div>
+            @if (attributeError()) {
+              <p class="attribute-error">{{ attributeError() }}</p>
+            }
+            @if (attributeDraft(); as draft) {
+              <div class="attribute-form">
+                <label
+                  >Nombre<input
+                    [value]="draft.name"
+                    (input)="updateAttributeDraft('name', $any($event.target).value)"
+                /></label>
+                <label
+                  >Tipo<input
+                    [value]="draft.type"
+                    placeholder="Ej. String, Long, Boolean, Cliente"
+                    (input)="updateAttributeDraft('type', $any($event.target).value)"
+                /></label>
+                <label
+                  >Visibilidad<select
+                    [value]="draft.visibility"
+                    (change)="updateAttributeDraft('visibility', $any($event.target).value)"
+                  >
+                    @for (visibility of visibilityOptions; track visibility) {
+                      <option [value]="visibility">{{ visibility }}</option>
+                    }
+                  </select></label
+                >
+                <button
+                  class="advanced-toggle"
+                  type="button"
+                  [attr.aria-expanded]="advancedAttributeOptionsOpen()"
+                  (click)="advancedAttributeOptionsOpen.update((open) => !open)"
+                >
+                  Opciones avanzadas
+                  <span aria-hidden="true">{{ advancedAttributeOptionsOpen() ? '▴' : '▾' }}</span>
+                </button>
+                @if (advancedAttributeOptionsOpen()) {
+                  <div class="advanced-options">
+                    <label title="Identifica de forma única la entidad.">
+                      <input
+                        type="checkbox"
+                        [checked]="draft.primaryKey"
+                        (change)="updateAttributeDraft('primaryKey', $any($event.target).checked)"
+                      />
+                      Clave primaria
+                    </label>
+                    <label
+                      title="El valor pertenece a la clase y se comparte entre sus instancias."
+                    >
+                      <input
+                        type="checkbox"
+                        [checked]="draft.isStatic"
+                        (change)="updateAttributeDraft('isStatic', $any($event.target).checked)"
+                      />
+                      Static
+                    </label>
+                    <label title="El valor no debería modificarse después de inicializarse.">
+                      <input
+                        type="checkbox"
+                        [checked]="draft.isFinal"
+                        (change)="updateAttributeDraft('isFinal', $any($event.target).checked)"
+                      />
+                      Final
+                    </label>
+                    <label title="Valor inicial del atributo.">
+                      Valor por defecto
+                      <input
+                        [value]="draft.defaultValue"
+                        (input)="updateAttributeDraft('defaultValue', $any($event.target).value)"
+                      />
+                    </label>
+                  </div>
+                }
+                <div class="attribute-actions">
+                  <button
+                    class="btn btn-ghost"
+                    type="button"
+                    [disabled]="attributeSaving()"
+                    (click)="cancelAttributeEdit()"
+                  >
+                    Cancelar</button
+                  ><button
+                    class="btn btn-primary"
+                    type="button"
+                    [disabled]="attributeSaving()"
+                    (click)="saveAttribute()"
+                  >
+                    {{ attributeSaving() ? 'Guardando...' : 'Guardar' }}
+                  </button>
+                </div>
+              </div>
+            } @else if (selected.umlClass.attributes.length === 0) {
+              <p class="muted">Sin atributos</p>
+            } @else {
+              @for (attribute of selected.umlClass.attributes; track attribute.id) {
+                <div class="attribute-row">
+                  <span
+                    >{{ visibilitySymbol(attribute.visibility) }} {{ formatAttribute(attribute) }}
+                    @if (attribute.primaryKey) {
+                      <small class="pk">PK</small>
+                    }
+                    @if (isStatic(attribute)) {
+                      <small class="attribute-flag">static</small>
+                    }
+                    @if (attribute.isFinal) {
+                      <small class="attribute-flag">final</small>
+                    }</span
+                  ><span class="attribute-row-actions"
+                    ><button
+                      type="button"
+                      aria-label="Editar atributo"
+                      (click)="startEditAttribute(attribute)"
+                    >
+                      ✎</button
+                    ><button
+                      type="button"
+                      aria-label="Eliminar atributo"
+                      [disabled]="attributeSaving()"
+                      (click)="removeAttribute(attribute)"
+                    >
+                      ×
+                    </button></span
+                  >
+                </div>
+              }
+            }
           } @else {
             <p class="muted">Selecciona una clase para ver sus propiedades.</p>
           }
@@ -158,6 +292,44 @@
         <div class="history">
           <span class="section-label">Actividad reciente</span>
           <p>Las operaciones del diagrama aparecerán aquí.<small>Historial próximamente</small></p>
+        </div>
+      }
+      @if (pendingAttributeDeletion(); as attribute) {
+        <div
+          class="attribute-modal-backdrop"
+          role="presentation"
+          (click)="cancelAttributeDeletion()"
+        >
+          <section
+            class="attribute-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-attribute-title"
+            (click)="$event.stopPropagation()"
+          >
+            <div class="attribute-modal-icon">!</div>
+            <h2 id="delete-attribute-title">Eliminar atributo</h2>
+            <p>¿Seguro que deseas eliminar el atributo “{{ attribute.name }}”?</p>
+            <small>Esta acción no se puede deshacer.</small>
+            <div class="attribute-modal-actions">
+              <button
+                class="btn btn-ghost"
+                type="button"
+                [disabled]="attributeSaving()"
+                (click)="cancelAttributeDeletion()"
+              >
+                Cancelar
+              </button>
+              <button
+                class="btn btn-danger"
+                type="button"
+                [disabled]="attributeSaving()"
+                (click)="confirmAttributeDeletion()"
+              >
+                {{ attributeSaving() ? 'Eliminando...' : 'Eliminar' }}
+              </button>
+            </div>
+          </section>
         </div>
       }
     </aside>

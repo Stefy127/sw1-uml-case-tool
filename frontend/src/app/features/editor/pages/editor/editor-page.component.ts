@@ -3,11 +3,22 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { DEV_USER_ID } from '../../../../core/config/dev-user.config';
-import { DiagramDetail, UmlClass } from '../../models/diagram.model';
+import { DiagramDetail, UmlAttribute, UmlClass } from '../../models/diagram.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
 import { DiagramService } from '../../services/diagram.service';
 
 type EditorTool = 'SELECT' | 'CLASS';
+type Visibility = 'PUBLIC' | 'PRIVATE' | 'PROTECTED' | 'PACKAGE';
+
+interface AttributeDraft {
+  name: string;
+  type: string;
+  visibility: Visibility;
+  isStatic: boolean;
+  isFinal: boolean;
+  defaultValue: string;
+  primaryKey: boolean;
+}
 
 interface RenderedUmlClass {
   umlClass: UmlClass;
@@ -55,6 +66,19 @@ export class EditorPageComponent {
   readonly renameError = signal('');
   readonly dragState = signal<DragState | null>(null);
   readonly moving = signal(false);
+  readonly selectedClass = computed(() => {
+    const umlClass = this.diagram()?.canonicalModel.classes.find(
+      (candidate) => candidate.id === this.selectedClassId(),
+    );
+    return umlClass ? { umlClass } : null;
+  });
+  readonly attributeDraft = signal<AttributeDraft | null>(null);
+  readonly editingAttributeId = signal<string | null>(null);
+  readonly attributeSaving = signal(false);
+  readonly attributeError = signal('');
+  readonly pendingAttributeDeletion = signal<UmlAttribute | null>(null);
+  readonly advancedAttributeOptionsOpen = signal(false);
+  readonly visibilityOptions: Visibility[] = ['PUBLIC', 'PRIVATE', 'PROTECTED', 'PACKAGE'];
   readonly renderedClasses = computed<RenderedUmlClass[]>(() => {
     const currentDiagram = this.diagram();
     const classes = currentDiagram?.canonicalModel?.classes ?? [];
@@ -241,6 +265,211 @@ export class EditorPageComponent {
     return Math.max(0, Math.min(value, Math.max(0, canvasSize - itemSize)));
   }
 
+  startAddAttribute(): void {
+    if (!this.selectedClass()) return;
+    this.editingAttributeId.set(null);
+    this.attributeError.set('');
+    this.advancedAttributeOptionsOpen.set(false);
+    this.attributeDraft.set({
+      name: '',
+      type: 'String',
+      visibility: 'PRIVATE',
+      isStatic: false,
+      isFinal: false,
+      defaultValue: '',
+      primaryKey: false,
+    });
+  }
+
+  startEditAttribute(attribute: UmlAttribute): void {
+    this.editingAttributeId.set(attribute.id);
+    this.attributeError.set('');
+    this.advancedAttributeOptionsOpen.set(
+      attribute.primaryKey || attribute.isStatic || attribute.isFinal || !!attribute.defaultValue,
+    );
+    this.attributeDraft.set({
+      name: attribute.name,
+      type: attribute.type,
+      visibility: attribute.visibility as Visibility,
+      isStatic: attribute.isStatic,
+      isFinal: attribute.isFinal,
+      defaultValue: attribute.defaultValue ?? '',
+      primaryKey: attribute.primaryKey,
+    });
+  }
+
+  updateAttributeDraft(field: keyof AttributeDraft, value: string | boolean): void {
+    this.attributeDraft.update((draft) =>
+      draft ? ({ ...draft, [field]: value } as AttributeDraft) : draft,
+    );
+  }
+
+  cancelAttributeEdit(): void {
+    if (!this.attributeSaving()) {
+      this.attributeDraft.set(null);
+      this.editingAttributeId.set(null);
+      this.attributeError.set('');
+      this.advancedAttributeOptionsOpen.set(false);
+    }
+  }
+
+  saveAttribute(): void {
+    if (this.attributeSaving()) return;
+    const currentDiagram = this.diagram();
+    const currentClass = this.selectedClass()?.umlClass;
+    const draft = this.attributeDraft();
+    if (!currentDiagram || !currentClass || !draft) return;
+    const name = draft.name.trim();
+    const type = draft.type.trim();
+    if (!name || !type) {
+      this.attributeError.set('Nombre y tipo son obligatorios.');
+      return;
+    }
+    if (!this.visibilityOptions.includes(draft.visibility)) {
+      this.attributeError.set('La visibilidad no es válida.');
+      return;
+    }
+    const editingId = this.editingAttributeId();
+    if (
+      currentClass.attributes.some(
+        (attribute) =>
+          attribute.id !== editingId && attribute.name.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      this.attributeError.set('Ya existe un atributo con ese nombre.');
+      return;
+    }
+    const existing = currentClass.attributes.find((attribute) => attribute.id === editingId);
+    if (
+      existing &&
+      existing.name === name &&
+      existing.type === type &&
+      existing.visibility === draft.visibility &&
+      existing.isStatic === draft.isStatic &&
+      existing.isFinal === draft.isFinal &&
+      (existing.defaultValue ?? '') === draft.defaultValue.trim() &&
+      existing.primaryKey === draft.primaryKey
+    ) {
+      this.cancelAttributeEdit();
+      return;
+    }
+    const payload = editingId
+      ? {
+          classId: currentClass.id,
+          attributeId: editingId,
+          name,
+          type,
+          visibility: draft.visibility,
+          isStatic: draft.isStatic,
+          isFinal: draft.isFinal,
+          defaultValue: draft.defaultValue.trim() || null,
+          primaryKey: draft.primaryKey,
+        }
+      : {
+          classId: currentClass.id,
+          attribute: {
+            id: crypto.randomUUID(),
+            name,
+            type,
+            visibility: draft.visibility,
+            isStatic: draft.isStatic,
+            isFinal: draft.isFinal,
+            defaultValue: draft.defaultValue.trim() || null,
+            primaryKey: draft.primaryKey,
+          },
+        };
+    this.attributeSaving.set(true);
+    this.attributeError.set('');
+    this.operationService
+      .execute(this.diagramId, {
+        operation: {
+          operationId: crypto.randomUUID(),
+          diagramId: this.diagramId,
+          userId: DEV_USER_ID,
+          baseVersion: currentDiagram.version,
+          type: editingId ? 'UPDATE_ATTRIBUTE' : 'ADD_ATTRIBUTE',
+          payload,
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.applyOperationResponse(response);
+          this.attributeSaving.set(false);
+          this.cancelAttributeEdit();
+        },
+        error: (error: unknown) => {
+          this.attributeSaving.set(false);
+          this.attributeError.set(this.operationError(error, 'No se pudo guardar el atributo.'));
+          console.error(
+            'No se pudo guardar el atributo.',
+            error instanceof HttpErrorResponse ? error.status : 'Error HTTP',
+          );
+        },
+      });
+  }
+
+  removeAttribute(attribute: UmlAttribute): void {
+    if (!this.selectedClass() || this.attributeSaving()) return;
+    this.attributeError.set('');
+    this.pendingAttributeDeletion.set(attribute);
+  }
+
+  cancelAttributeDeletion(): void {
+    if (!this.attributeSaving()) this.pendingAttributeDeletion.set(null);
+  }
+
+  confirmAttributeDeletion(): void {
+    const currentDiagram = this.diagram();
+    const currentClass = this.selectedClass()?.umlClass;
+    const attribute = this.pendingAttributeDeletion();
+    if (!currentDiagram || !currentClass || !attribute || this.attributeSaving()) return;
+    this.attributeSaving.set(true);
+    this.attributeError.set('');
+    this.operationService
+      .execute(this.diagramId, {
+        operation: {
+          operationId: crypto.randomUUID(),
+          diagramId: this.diagramId,
+          userId: DEV_USER_ID,
+          baseVersion: currentDiagram.version,
+          type: 'REMOVE_ATTRIBUTE',
+          payload: { classId: currentClass.id, attributeId: attribute.id },
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.applyOperationResponse(response);
+          this.attributeSaving.set(false);
+          this.pendingAttributeDeletion.set(null);
+        },
+        error: (error: unknown) => {
+          this.attributeSaving.set(false);
+          this.attributeError.set(this.operationError(error, 'No se pudo eliminar el atributo.'));
+          console.error(
+            'No se pudo eliminar el atributo.',
+            error instanceof HttpErrorResponse ? error.status : 'Error HTTP',
+          );
+        },
+      });
+  }
+
+  private applyOperationResponse(response: {
+    newVersion: number;
+    canonicalModel: DiagramDetail['canonicalModel'];
+    viewState: DiagramDetail['viewState'];
+  }): void {
+    this.diagram.update((diagram) =>
+      diagram
+        ? {
+            ...diagram,
+            version: response.newVersion,
+            canonicalModel: response.canonicalModel,
+            viewState: response.viewState,
+          }
+        : diagram,
+    );
+  }
+
   createClassAt(x: number, y: number): void {
     const currentDiagram = this.diagram();
     if (!currentDiagram || !this.diagramId) return;
@@ -391,8 +620,9 @@ export class EditorPageComponent {
   visibilitySymbol(visibility: string | undefined): string {
     return { PUBLIC: '+', PRIVATE: '-', PROTECTED: '#', PACKAGE: '~' }[visibility ?? ''] ?? '~';
   }
-  formatAttribute(attribute: { name: string; type: string }): string {
-    return `${attribute.name}: ${attribute.type}`;
+  formatAttribute(attribute: { name: string; type: string; defaultValue?: string | null }): string {
+    const defaultValue = attribute.defaultValue?.trim();
+    return `${attribute.name}: ${attribute.type}${defaultValue ? ` = ${defaultValue}` : ''}`;
   }
   formatMethod(method: UmlClass['methods'][number]): string {
     return `${method.name}(${method.parameters.map((parameter) => `${parameter.name}: ${parameter.type}`).join(', ')}): ${method.returnType}`;

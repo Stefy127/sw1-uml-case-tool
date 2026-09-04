@@ -1,9 +1,10 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 
 import { DiagramDetail } from '../../models/diagram.model';
+import { UmlAttribute } from '../../models/diagram.model';
 import { ExecuteDiagramOperationRequest } from '../../models/diagram-operation.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
 import { DiagramService } from '../../services/diagram.service';
@@ -290,5 +291,203 @@ describe('EditorPageComponent', () => {
     expect(page.activeTool()).toBe('SELECT');
     expect(page.error()).toContain('cambió en otra sesión');
     expect(page.diagram()?.canonicalModel.classes).toHaveLength(0);
+  });
+
+  it('adds an attribute with the selected class and applies the authoritative response', async () => {
+    const current = diagramWithClass();
+    let request: ExecuteDiagramOperationRequest | undefined;
+    const attribute: UmlAttribute = {
+      id: 'a1',
+      name: 'email',
+      type: 'String',
+      visibility: 'PRIVATE',
+      isStatic: false,
+      isFinal: false,
+      defaultValue: null,
+      primaryKey: false,
+    };
+    await configure(
+      {
+        execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
+          request = value;
+          return of({
+            newVersion: 8,
+            canonicalModel: {
+              ...current.canonicalModel,
+              classes: [{ ...current.canonicalModel.classes[0], attributes: [attribute] }],
+            },
+            viewState: current.viewState,
+          });
+        },
+      },
+      current,
+    );
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectedClassId.set('c1');
+    page.startAddAttribute();
+    page.updateAttributeDraft('name', ' email ');
+    page.saveAttribute();
+
+    expect(request?.operation.type).toBe('ADD_ATTRIBUTE');
+    expect(request?.operation.baseVersion).toBe(7);
+    expect(request?.operation.payload).toMatchObject({ classId: 'c1' });
+    expect(page.diagram()?.canonicalModel.classes[0].attributes[0].name).toBe('email');
+    expect(page.diagram()?.version).toBe(8);
+    expect(page.selectedClassId()).toBe('c1');
+    expect(page.attributeDraft()).toBeNull();
+  });
+
+  it('rejects duplicate attribute names without sending an operation', async () => {
+    const current = diagramWithClass();
+    current.canonicalModel.classes[0].attributes = [
+      {
+        id: 'a1',
+        name: 'email',
+        type: 'String',
+        visibility: 'PRIVATE',
+        isStatic: false,
+        isFinal: false,
+        defaultValue: null,
+        primaryKey: false,
+      },
+    ];
+    let executions = 0;
+    await configure(
+      {
+        execute: () => {
+          executions++;
+          return of({});
+        },
+      },
+      current,
+    );
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectedClassId.set('c1');
+    page.startAddAttribute();
+    page.updateAttributeDraft('name', 'EMAIL');
+    page.saveAttribute();
+    expect(executions).toBe(0);
+    expect(page.attributeError()).toContain('Ya existe');
+  });
+
+  it('updates and removes an attribute through their atomic operations', async () => {
+    const current = diagramWithClass();
+    const attribute: UmlAttribute = {
+      id: 'a1',
+      name: 'email',
+      type: 'String',
+      visibility: 'PRIVATE',
+      isStatic: false,
+      isFinal: false,
+      defaultValue: null,
+      primaryKey: false,
+    };
+    current.canonicalModel.classes[0].attributes = [attribute];
+    const requests: ExecuteDiagramOperationRequest[] = [];
+    await configure(
+      {
+        execute: (_id: string, request: ExecuteDiagramOperationRequest) => {
+          requests.push(request);
+          const operation =
+            request.operation.type === 'UPDATE_ATTRIBUTE'
+              ? { ...attribute, visibility: 'PUBLIC' }
+              : undefined;
+          return of({
+            newVersion: current.version + requests.length,
+            canonicalModel: {
+              ...current.canonicalModel,
+              classes: [
+                { ...current.canonicalModel.classes[0], attributes: operation ? [operation] : [] },
+              ],
+            },
+            viewState: current.viewState,
+          });
+        },
+      },
+      current,
+    );
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectedClassId.set('c1');
+    page.startEditAttribute(attribute);
+    page.updateAttributeDraft('visibility', 'PUBLIC');
+    page.saveAttribute();
+    expect(requests[0].operation.type).toBe('UPDATE_ATTRIBUTE');
+    expect(page.diagram()?.canonicalModel.classes[0].attributes[0].visibility).toBe('PUBLIC');
+
+    page.removeAttribute(page.diagram()!.canonicalModel.classes[0].attributes[0]);
+    expect(page.pendingAttributeDeletion()?.name).toBe('email');
+    expect(requests).toHaveLength(1);
+    page.confirmAttributeDeletion();
+    expect(requests[1].operation.type).toBe('REMOVE_ATTRIBUTE');
+    expect(page.diagram()?.canonicalModel.classes[0].attributes).toHaveLength(0);
+    expect(page.selectedClassId()).toBe('c1');
+  });
+
+  it('opens the custom deletion modal and keeps advanced options collapsed for new attributes', async () => {
+    const current = diagramWithClass();
+    const attribute: UmlAttribute = {
+      id: 'a1',
+      name: 'id',
+      type: 'Long',
+      visibility: 'PRIVATE',
+      isStatic: true,
+      isFinal: true,
+      defaultValue: '1',
+      primaryKey: true,
+    };
+    current.canonicalModel.classes[0].attributes = [attribute];
+    let executions = 0;
+    await configure(
+      {
+        execute: () => {
+          executions++;
+          return of({});
+        },
+      },
+      current,
+    );
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectedClassId.set('c1');
+    page.startAddAttribute();
+    expect(page.advancedAttributeOptionsOpen()).toBe(false);
+    page.removeAttribute(attribute);
+    expect(page.pendingAttributeDeletion()).toBe(attribute);
+    page.cancelAttributeDeletion();
+    expect(page.pendingAttributeDeletion()).toBeNull();
+    expect(executions).toBe(0);
+    page.startEditAttribute(attribute);
+    expect(page.advancedAttributeOptionsOpen()).toBe(true);
+  });
+
+  it('prevents a second delete request while the first one is saving', async () => {
+    const current = diagramWithClass();
+    const attribute: UmlAttribute = {
+      id: 'a1',
+      name: 'email',
+      type: 'String',
+      visibility: 'PRIVATE',
+      isStatic: false,
+      isFinal: false,
+      defaultValue: null,
+      primaryKey: false,
+    };
+    current.canonicalModel.classes[0].attributes = [attribute];
+    let executions = 0;
+    await configure(
+      {
+        execute: () => {
+          executions++;
+          return NEVER;
+        },
+      },
+      current,
+    );
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectedClassId.set('c1');
+    page.removeAttribute(attribute);
+    page.confirmAttributeDeletion();
+    page.confirmAttributeDeletion();
+    expect(executions).toBe(1);
+    expect(page.attributeSaving()).toBe(true);
   });
 });
