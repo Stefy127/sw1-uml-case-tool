@@ -107,6 +107,9 @@ export class EditorPageComponent {
   readonly editingParameterId = signal<string | null>(null);
   readonly pendingMethodDeletion = signal<UmlMethod | null>(null);
   readonly pendingParameterDeletion = signal<UmlParameter | null>(null);
+  readonly pendingClassDeletion = signal<UmlClass | null>(null);
+  readonly classDeleteSaving = signal(false);
+  readonly classDeleteError = signal('');
   readonly methodSaving = signal(false);
   readonly methodError = signal('');
   readonly parameterError = signal('');
@@ -150,6 +153,76 @@ export class EditorPageComponent {
 
   setActiveTool(tool: EditorTool): void {
     this.activeTool.set(tool);
+  }
+
+  handleToolbarClick(event: MouseEvent): void {
+    const button = (event.target as HTMLElement).closest('button');
+    const toolbar = button?.closest('.toolbar');
+    if (!button || !toolbar) return;
+    const buttons = Array.from(toolbar.querySelectorAll('button'));
+    if (buttons.indexOf(button) === 8) this.removeSelectedClass();
+  }
+
+  removeSelectedClass(): void {
+    const currentClass = this.selectedClass()?.umlClass;
+    if (!currentClass || this.classDeleteSaving()) {
+      if (!currentClass) {
+        const message = 'Selecciona una clase para eliminarla.';
+        this.classDeleteError.set(message);
+        this.error.set(message);
+      }
+      return;
+    }
+    this.classDeleteError.set('');
+    this.pendingClassDeletion.set(currentClass);
+  }
+
+  cancelClassDeletion(): void {
+    if (this.classDeleteSaving()) return;
+    this.pendingClassDeletion.set(null);
+    this.classDeleteError.set('');
+  }
+
+  confirmClassDeletion(): void {
+    const currentDiagram = this.diagram();
+    const currentClass = this.pendingClassDeletion();
+    if (!currentDiagram || !currentClass || this.classDeleteSaving()) return;
+
+    this.classDeleteSaving.set(true);
+    this.classDeleteError.set('');
+    this.operationService
+      .execute(this.diagramId, {
+        operation: {
+          operationId: crypto.randomUUID(),
+          diagramId: this.diagramId,
+          userId: DEV_USER_ID,
+          baseVersion: currentDiagram.version,
+          type: 'DELETE_CLASS',
+          payload: { classId: currentClass.id },
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.applyOperationResponse(response);
+          this.classDeleteSaving.set(false);
+          this.pendingClassDeletion.set(null);
+          this.classDeleteError.set('');
+          this.selectedClassId.set(null);
+          this.editingClassId.set(null);
+          this.editingMethodId.set(null);
+          this.parameterDraft.set(null);
+        },
+        error: (error: unknown) => {
+          this.classDeleteSaving.set(false);
+          this.classDeleteError.set(
+            this.operationError(error, 'No se pudo eliminar la clase.'),
+          );
+          console.error(
+            'No se pudo eliminar la clase.',
+            error instanceof HttpErrorResponse ? error.status : 'Error HTTP',
+          );
+        },
+      });
   }
 
   onCanvasClick(event: MouseEvent): void {

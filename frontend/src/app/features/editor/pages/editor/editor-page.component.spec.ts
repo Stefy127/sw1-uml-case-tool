@@ -47,6 +47,71 @@ describe('EditorPageComponent', () => {
     };
   }
 
+  it('opens class deletion and applies DELETE_CLASS response authoritatively', async () => {
+    const current = diagramWithClass();
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure(
+      {
+        execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
+          request = value;
+          return of({
+            newVersion: 8,
+            canonicalModel: { ...current.canonicalModel, classes: [] },
+            viewState: { ...current.viewState, nodes: [] },
+          });
+        },
+      },
+      current,
+    );
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectedClassId.set('c1');
+    page.removeSelectedClass();
+    expect(page.pendingClassDeletion()?.name).toBe('Cliente');
+    page.confirmClassDeletion();
+    expect(request?.operation.type).toBe('DELETE_CLASS');
+    expect(request?.operation.diagramId).toBe('d1');
+    expect(request?.operation.baseVersion).toBe(7);
+    expect(request?.operation.payload).toEqual({ classId: 'c1' });
+    expect(page.diagram()?.canonicalModel.classes).toHaveLength(0);
+    expect(page.diagram()?.viewState.nodes).toHaveLength(0);
+    expect(page.diagram()?.version).toBe(8);
+    expect(page.selectedClassId()).toBeNull();
+    expect(page.pendingClassDeletion()).toBeNull();
+  });
+
+  it('does not execute deletion without a selected class', async () => {
+    let executions = 0;
+    await configure({
+      execute: () => {
+        executions++;
+        return of({});
+      },
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.removeSelectedClass();
+    expect(executions).toBe(0);
+    expect(page.classDeleteError()).toBe('Selecciona una clase para eliminarla.');
+    expect(page.pendingClassDeletion()).toBeNull();
+  });
+
+  it('keeps the class and modal open on a version conflict', async () => {
+    const current = diagramWithClass();
+    await configure(
+      {
+        execute: () =>
+          throwError(() => new HttpErrorResponse({ status: 409, statusText: 'Conflict' })),
+      },
+      current,
+    );
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectedClassId.set('c1');
+    page.removeSelectedClass();
+    page.confirmClassDeletion();
+    expect(page.pendingClassDeletion()?.id).toBe('c1');
+    expect(page.diagram()?.canonicalModel.classes).toHaveLength(1);
+    expect(page.classDeleteError()).toContain('diagrama cambi');
+  });
+
   it('previews a selected class during drag and sends one MOVE_CLASS on release', async () => {
     const current = diagramWithClass();
     let executions = 0;

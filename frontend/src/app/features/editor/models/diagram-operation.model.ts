@@ -31,6 +31,10 @@ export interface CreateClassPayload {
   height: number;
 }
 
+export interface DeleteClassPayload {
+  classId: string;
+}
+
 export interface RenameClassPayload {
   classId: string;
   name: string;
@@ -111,6 +115,7 @@ export interface DiagramOperation {
   type: DiagramOperationType;
   payload:
     | CreateClassPayload
+    | DeleteClassPayload
     | RenameClassPayload
     | MoveClassPayload
     | AddAttributePayload

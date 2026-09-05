@@ -15,7 +15,7 @@
   </header>
 
   <div class="editor-body">
-    <aside class="toolbar">
+    <aside class="toolbar" (click)="handleToolbarClick($event)">
       @for (tool of tools; track $index) {
         <button
           [class.active]="
@@ -462,6 +462,43 @@
         <div class="history">
           <span class="section-label">Actividad reciente</span>
           <p>Las operaciones del diagrama aparecerán aquí.<small>Historial próximamente</small></p>
+        </div>
+      }
+      @if (pendingClassDeletion(); as umlClass) {
+        <div class="attribute-modal-backdrop" role="presentation" (click)="cancelClassDeletion()">
+          <section
+            class="attribute-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-class-title"
+            (click)="$event.stopPropagation()"
+          >
+            <div class="attribute-modal-icon">!</div>
+            <h2 id="delete-class-title">Eliminar clase</h2>
+            <p>¿Seguro que deseas eliminar la clase “{{ umlClass.name }}”?</p>
+            <small>Se eliminarán también los elementos asociados que dependan de esta clase.</small>
+            @if (classDeleteError()) {
+              <p class="attribute-error">{{ classDeleteError() }}</p>
+            }
+            <div class="attribute-modal-actions">
+              <button
+                class="btn btn-ghost"
+                type="button"
+                [disabled]="classDeleteSaving()"
+                (click)="cancelClassDeletion()"
+              >
+                Cancelar
+              </button>
+              <button
+                class="btn btn-danger"
+                type="button"
+                [disabled]="classDeleteSaving()"
+                (click)="confirmClassDeletion()"
+              >
+                {{ classDeleteSaving() ? 'Eliminando...' : 'Eliminar' }}
+              </button>
+            </div>
+          </section>
         </div>
       }
       @if (pendingMethodDeletion(); as method) {
