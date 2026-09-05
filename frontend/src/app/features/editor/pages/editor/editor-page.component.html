@@ -1,4 +1,4 @@
-<div class="editor" (keydown)="onEditorKeydown($event)" tabindex="0">
+<div class="editor" (keydown)="onEditorKeydown($event)" (keyup)="onEditorKeyup($event)" tabindex="0">
   <header class="editor-head">
     <a routerLink="/projects" class="editor-brand"
       >← <span class="brand-mark">S</span><b>SW1</b> UML ›</a
@@ -27,26 +27,37 @@
         >
           <span>{{ tool }}</span
           ><small>{{
-            ['Seleccionar', 'Clase', 'Relación', 'Agregación', 'Composición', 'Herencia'][$index]
+            ['Seleccionar', 'Clase', 'Relación', 'Agregación', 'Composición', 'Herencia', 'Dependencia'][$index]
           }}</small>
         </button>
       }
       <hr />
       <button>↥<small>Importar</small></button><button>♩<small>Voz</small></button>
-      <button>⌫<small>Eliminar</small></button><button class="zoom">⊕<small>100%</small></button>
+      <button>⌫<small>Eliminar</small></button>
+      <button class="toolbar-zoom-indicator" (click)="resetZoom()">
+        ⊕<small>{{ zoomPercent() }}%</small>
+      </button>
     </aside>
 
     <main
       class="canvas"
       [class.insertion-mode]="activeTool() === 'CLASS'"
       [class.relation-mode]="activeTool() === 'RELATION'"
+      [style.cursor]="panState() ? 'grabbing' : spacePressed() ? 'grab' : null"
       (click)="onCanvasClick($event)"
+      (pointerdown)="onCanvasPointerDown($event)"
       (pointermove)="onCanvasPointerMove($event)"
       (pointerup)="onCanvasPointerUp($event)"
       (pointercancel)="onCanvasPointerCancel($event)"
+      (wheel)="onCanvasWheel($event)"
     >
       <div class="live">● En vivo · 2 colaboradores</div>
-      <div class="canvas-actions">◴　⇩　▣</div>
+      <div class="canvas-actions viewport-controls" (click)="$event.stopPropagation()">
+        <button class="btn btn-ghost" type="button" title="Alejar" (click)="zoomOut()">−</button>
+        <button class="btn btn-ghost" type="button" title="Restablecer zoom" (click)="resetZoom()">{{ zoomPercent() }}%</button>
+        <button class="btn btn-ghost" type="button" title="Acercar" (click)="zoomIn()">+</button>
+        <button class="btn btn-ghost" type="button" title="Ajustar al contenido" (click)="fitToContent($event)">Ajustar</button>
+      </div>
       @if (loading()) {
         <div class="canvas-state">Cargando diagrama...</div>
       } @else if (error()) {
@@ -54,6 +65,7 @@
       } @else if (renderedClasses().length === 0) {
         <div class="canvas-state">Este diagrama aún no tiene clases</div>
       }
+      <div class="diagram-world" [style.transform]="worldTransform()" style="transform-origin: 0 0">
       <svg class="relations-layer" aria-hidden="true">
         <defs>
           <marker id="relation-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
@@ -174,6 +186,7 @@
           }
         </article>
       }
+      </div>
     </main>
 
     <aside class="inspector">

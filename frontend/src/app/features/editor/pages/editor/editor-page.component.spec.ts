@@ -476,7 +476,7 @@ describe('EditorPageComponent', () => {
       current,
     );
     const fixture = TestBed.createComponent(EditorPageComponent);
-    await fixture.whenStable();
+    fixture.detectChanges();
     const page = fixture.componentInstance;
     const card = fixture.nativeElement.querySelector('.uml-class') as HTMLElement;
     const canvas = fixture.nativeElement.querySelector('.canvas') as HTMLElement;
@@ -946,5 +946,92 @@ describe('EditorPageComponent', () => {
     page.confirmMethodDeletion();
     expect(requests[4].operation.type).toBe('REMOVE_METHOD');
     expect(page.selectedClassId()).toBe('c1');
+  });
+
+  it('keeps zoom controls bounded and reset preserves pan', async () => {
+    await configure({ execute: () => NEVER });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.zoom.set(0.25);
+    page.zoomOut();
+    expect(page.zoom()).toBe(0.25);
+    page.zoomIn();
+    expect(page.zoom()).toBeGreaterThan(0.25);
+
+    page.panX.set(-240);
+    page.panY.set(120);
+    page.zoom.set(1.5);
+    page.resetZoom();
+    expect(page.zoom()).toBe(1);
+    expect(page.panX()).toBe(-240);
+    expect(page.panY()).toBe(120);
+  });
+
+  it('converts screen coordinates to world coordinates using local viewport state', async () => {
+    await configure({ execute: () => NEVER });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    const viewport = document.createElement('main');
+    viewport.getBoundingClientRect = () => ({
+      x: 100,
+      y: 50,
+      top: 50,
+      left: 100,
+      right: 1100,
+      bottom: 750,
+      width: 1000,
+      height: 700,
+      toJSON: () => ({}),
+    });
+    page.zoom.set(0.5);
+    page.panX.set(-500);
+    page.panY.set(-200);
+    expect(page.screenToWorld(350, 200, viewport)).toEqual({ x: 1500, y: 700 });
+  });
+
+  it('pans freely without issuing an operation request', async () => {
+    let executions = 0;
+    await configure({
+      execute: () => {
+        executions++;
+        return NEVER;
+      },
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    const viewport = document.createElement('main');
+    const event = (values: Partial<PointerEvent>): PointerEvent =>
+      ({
+        pointerId: 1,
+        clientX: 0,
+        clientY: 0,
+        button: 0,
+        target: viewport,
+        currentTarget: viewport,
+        preventDefault: () => undefined,
+        ...values,
+      }) as PointerEvent;
+
+    page.spacePressed.set(true);
+    page.onCanvasPointerDown(event({ clientX: 10, clientY: 20 }));
+    page.onCanvasPointerMove(event({ clientX: 1510, clientY: -180 }));
+    expect(page.panX()).toBe(1500);
+    expect(page.panY()).toBe(-200);
+    page.onCanvasPointerUp(event({ clientX: 1510, clientY: -180 }));
+    expect(executions).toBe(0);
+  });
+
+  it('fits visible nodes using the actual viewport dimensions', async () => {
+    const current = diagramWithClass();
+    current.viewState.nodes = [{ classId: 'c1', x: 100, y: 100, width: 240, height: 180 }];
+    await configure({ execute: () => NEVER }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    const viewport = document.createElement('main');
+    viewport.classList.add('canvas');
+    Object.defineProperties(viewport, { clientWidth: { value: 1000 }, clientHeight: { value: 700 } });
+    const button = document.createElement('button');
+    viewport.append(button);
+    page.fitToContent({ currentTarget: button } as unknown as Event);
+    expect(page.zoom()).toBeGreaterThan(0.25);
+    expect(Number.isFinite(page.panX())).toBe(true);
+    expect(Number.isFinite(page.panY())).toBe(true);
   });
 });

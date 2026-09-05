@@ -10,9 +10,9 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 export class AppShellComponent {
   collapsed = false;
   nav = [
-    { label: 'Dashboard', icon: '▦', link: '/projects' },
+    { label: 'Dashboard', icon: '▦', link: '/dashboard' },
     { label: 'Mis proyectos', icon: '▱', link: '/projects' },
-    { label: 'Compartidos conmigo', icon: '♧', link: '/projects' },
-    { label: 'Plantillas', icon: '◇', link: '/projects' },
+    { label: 'Compartidos conmigo', icon: '♧', link: '/shared' },
+    { label: 'Plantillas', icon: '◇', link: '/templates' },
   ];
 }

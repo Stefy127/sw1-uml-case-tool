@@ -5,19 +5,24 @@ import { EditorPageComponent } from './features/editor/pages/editor/editor-page.
 import { LoginPageComponent } from './features/auth/pages/login/login-page.component';
 import { ProjectDetailPageComponent } from './features/projects/pages/project-detail/project-detail-page.component';
 import { ProjectsPageComponent } from './features/projects/pages/projects/projects-page.component';
+import { SharedPageComponent } from './features/shared/pages/shared/shared-page.component';
+import { TemplatesPageComponent } from './features/templates/pages/templates/templates-page.component';
 
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'projects' },
+  { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
   { path: 'login', component: LoginPageComponent },
   {
     path: '',
     component: AppShellComponent,
     children: [
+      { path: 'dashboard', component: ProjectsPageComponent },
       { path: 'projects', component: ProjectsPageComponent },
       { path: 'projects/:id', component: ProjectDetailPageComponent },
       { path: 'editor/:diagramId', component: EditorPageComponent },
       { path: 'settings/appearance', component: AppearancePageComponent },
+      { path: 'shared', component: SharedPageComponent },
+      { path: 'templates', component: TemplatesPageComponent },
     ],
   },
-  { path: '**', redirectTo: 'projects' },
+  { path: '**', redirectTo: 'dashboard' },
 ];

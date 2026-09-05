@@ -92,18 +92,23 @@
   width: 35px;
   border: 0;
   border-top: 1px solid var(--color-border);
-  margin: 14px 0;
+  margin: auto 0 14px;
 }
-.toolbar .zoom {
-  margin-top: auto;
+.toolbar .toolbar-zoom-indicator {
+  width: auto;
+  min-height: 0;
 }
 .canvas {
   position: relative;
-  min-width: 0;
+  min-height: 0;
   flex: 1;
   overflow: hidden;
   background-image: radial-gradient(#ded9f4 1px, transparent 1px);
   background-size: 24px 24px;
+}
+.diagram-world {
+  position: absolute;
+  inset: 0;
 }
 .canvas.insertion-mode {
   cursor: crosshair;
@@ -125,8 +130,6 @@
   position: absolute;
   top: 27px;
   right: 25px;
-  color: #8796ae;
-  word-spacing: 15px;
   font-size: 20px;
 }
 .uml-class {

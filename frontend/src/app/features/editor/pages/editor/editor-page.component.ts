@@ -92,6 +92,16 @@ interface ResizeState {
   captureElement: HTMLElement;
 }
 
+interface PanState {
+  pointerId: number;
+  startPointerX: number;
+  startPointerY: number;
+  initialPanX: number;
+  initialPanY: number;
+  isDragging: boolean;
+  captureElement: HTMLElement;
+}
+
 interface RenderedRelation {
   relation: UmlRelation;
   path: string;
@@ -138,6 +148,8 @@ export class EditorPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly diagramService = inject(DiagramService);
   private readonly operationService = inject(DiagramOperationService);
+  private readonly defaultNodeWidth = 240;
+  private readonly defaultNodeHeight = 180;
 
   readonly diagramId = this.route.snapshot.paramMap.get('diagramId') ?? '';
   readonly diagram = signal<DiagramDetail | null>(null);
@@ -165,6 +177,14 @@ export class EditorPageComponent {
   readonly moving = signal(false);
   readonly resizeState = signal<ResizeState | null>(null);
   readonly resizing = signal(false);
+  readonly zoom = signal(1);
+  readonly panX = signal(0);
+  readonly panY = signal(0);
+  readonly spacePressed = signal(false);
+  readonly panState = signal<PanState | null>(null);
+  readonly suppressCanvasClick = signal(false);
+  readonly worldTransform = computed(() => `translate(${this.panX()}px, ${this.panY()}px) scale(${this.zoom()})`);
+  readonly zoomPercent = computed(() => Math.round(this.zoom() * 100));
   readonly styleSaving = signal(false);
   readonly styleError = signal('');
   readonly selectedClass = computed(() => {
@@ -341,10 +361,19 @@ export class EditorPageComponent {
   }
 
   onEditorKeydown(event: KeyboardEvent): void {
+    if (event.code === 'Space' && !this.isEditableTarget(event.target)) {
+      this.spacePressed.set(true);
+      event.preventDefault();
+      return;
+    }
     if (event.key === 'Escape' && this.activeTool() === 'RELATION') {
       this.setActiveTool('SELECT');
       event.preventDefault();
     }
+  }
+
+  onEditorKeyup(event: KeyboardEvent): void {
+    if (event.code === 'Space') this.spacePressed.set(false);
   }
 
   handleToolbarClick(event: MouseEvent): void {
@@ -493,13 +522,14 @@ export class EditorPageComponent {
   }
 
   onCanvasClick(event: MouseEvent): void {
+    if (this.suppressCanvasClick()) {
+      this.suppressCanvasClick.set(false);
+      return;
+    }
     if (this.activeTool() === 'CLASS') {
       const canvas = event.currentTarget as HTMLElement;
-      const rect = canvas.getBoundingClientRect();
-      this.createClassAt(
-        Math.max(0, event.clientX - rect.left - 120),
-        Math.max(0, event.clientY - rect.top - 30),
-      );
+      const point = this.screenToWorld(event.clientX, event.clientY, canvas);
+      this.createClassAt(point.x - 120, point.y - 30);
       return;
     }
     if (this.activeTool() === 'RELATION') return;
@@ -890,15 +920,17 @@ export class EditorPageComponent {
 
   onClassPointerDown(umlClass: UmlClass, event: PointerEvent): void {
     event.stopPropagation();
+    const canvas = (event.currentTarget as HTMLElement).closest('.canvas') as HTMLElement | null;
+    if (canvas && this.shouldStartPan(event)) {
+      this.startPan(event, canvas);
+      return;
+    }
     if (this.activeTool() !== 'SELECT' || this.moving()) return;
     const currentDiagram = this.diagram();
     const rendered = this.renderedClasses().find((item) => item.umlClass.id === umlClass.id);
     if (!currentDiagram || !rendered) return;
-    const canvas = (event.currentTarget as HTMLElement).closest('.canvas');
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const pointerX = event.clientX - rect.left;
-    const pointerY = event.clientY - rect.top;
+    const point = this.screenToWorld(event.clientX, event.clientY, canvas);
     const state: DragState = {
       classId: umlClass.id,
       pointerId: event.pointerId,
@@ -906,8 +938,8 @@ export class EditorPageComponent {
       startPointerY: event.clientY,
       initialX: rendered.x,
       initialY: rendered.y,
-      offsetX: pointerX - rendered.x,
-      offsetY: pointerY - rendered.y,
+      offsetX: point.x - rendered.x,
+      offsetY: point.y - rendered.y,
       previewX: rendered.x,
       previewY: rendered.y,
       isDragging: false,
@@ -938,7 +970,28 @@ export class EditorPageComponent {
     state.captureElement.setPointerCapture?.(event.pointerId);
   }
 
+  onCanvasPointerDown(event: PointerEvent): void {
+    const canvas = event.currentTarget as HTMLElement;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('.viewport-controls')) return;
+    if (
+      this.activeTool() === 'SELECT' &&
+      event.button === 0 &&
+      this.isCanvasBackgroundTarget(target)
+    ) {
+      this.startPan(event, canvas);
+      return;
+    }
+    if (this.shouldStartPan(event) && this.isCanvasBackgroundTarget(target)) {
+      this.startPan(event, canvas);
+    }
+  }
+
   onCanvasPointerMove(event: PointerEvent): void {
+    if (this.panState()) {
+      this.updatePan(event);
+      return;
+    }
     if (this.resizeState()) {
       this.updateResizePreview(event);
       return;
@@ -951,24 +1004,18 @@ export class EditorPageComponent {
     );
     if (!state.isDragging && distance < 4) return;
     const canvas = event.currentTarget as HTMLElement;
-    const rect = canvas.getBoundingClientRect();
-    const rendered = this.renderedClasses().find((item) => item.umlClass.id === state.classId);
-    if (!rendered) return;
+    const point = this.screenToWorld(event.clientX, event.clientY, canvas);
     state.isDragging = true;
-    state.previewX = this.limitPosition(
-      event.clientX - rect.left - state.offsetX,
-      canvas.clientWidth,
-      rendered.width,
-    );
-    state.previewY = this.limitPosition(
-      event.clientY - rect.top - state.offsetY,
-      canvas.clientHeight,
-      rendered.height,
-    );
+    state.previewX = point.x - state.offsetX;
+    state.previewY = point.y - state.offsetY;
     this.dragState.set({ ...state });
   }
 
   onCanvasPointerUp(event: PointerEvent): void {
+    if (this.panState()) {
+      this.finishPan(event);
+      return;
+    }
     if (this.resizeState()) {
       this.finishResize(event);
       return;
@@ -976,6 +1023,11 @@ export class EditorPageComponent {
     this.finishDrag(event);
   }
   onCanvasPointerCancel(event: PointerEvent): void {
+    if (this.panState()) {
+      this.finishPan(event);
+      this.suppressCanvasClick.set(false);
+      return;
+    }
     if (this.resizeState()) {
       this.finishResize(event, true);
       return;
@@ -991,8 +1043,8 @@ export class EditorPageComponent {
       isResizing:
         state.isResizing ||
         Math.hypot(event.clientX - state.startPointerX, event.clientY - state.startPointerY) >= 4,
-      previewWidth: Math.max(180, state.initialWidth + event.clientX - state.startPointerX),
-      previewHeight: Math.max(120, state.initialHeight + event.clientY - state.startPointerY),
+      previewWidth: Math.max(180, state.initialWidth + (event.clientX - state.startPointerX) / this.zoom()),
+      previewHeight: Math.max(120, state.initialHeight + (event.clientY - state.startPointerY) / this.zoom()),
     };
     this.resizeState.set(next);
   }
@@ -1116,8 +1168,136 @@ export class EditorPageComponent {
     const state = this.resizeState();
     return state?.classId === classId && state.isResizing ? state.previewHeight : fallback;
   }
-  private limitPosition(value: number, canvasSize: number, itemSize: number): number {
-    return Math.max(0, Math.min(value, Math.max(0, canvasSize - itemSize)));
+  screenToWorld(clientX: number, clientY: number, viewport: HTMLElement): { x: number; y: number } {
+    const rect = viewport.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left - this.panX()) / this.zoom(),
+      y: (clientY - rect.top - this.panY()) / this.zoom(),
+    };
+  }
+
+  zoomIn(): void {
+    this.setZoom(this.zoom() + 0.1);
+  }
+
+  zoomOut(): void {
+    this.setZoom(this.zoom() - 0.1);
+  }
+
+  resetZoom(): void {
+    this.zoom.set(1);
+  }
+
+  resetViewport(): void {
+    this.zoom.set(1);
+    this.panX.set(0);
+    this.panY.set(0);
+  }
+
+  fitToContent(event: Event): void {
+    const viewport = (event.currentTarget as HTMLElement).closest('.canvas') as HTMLElement | null;
+    const nodes = this.diagram()?.viewState.nodes ?? [];
+    if (!viewport || nodes.length === 0) {
+      this.resetViewport();
+      return;
+    }
+    const bounds = nodes.map((node) => ({
+      x: Number.isFinite(node.x) ? node.x : 0,
+      y: Number.isFinite(node.y) ? node.y : 0,
+      width: Number.isFinite(node.width) && node.width > 0 ? node.width : this.defaultNodeWidth,
+      height: Number.isFinite(node.height) && node.height > 0 ? node.height : this.defaultNodeHeight,
+    }));
+    const minX = Math.min(...bounds.map((node) => node.x));
+    const minY = Math.min(...bounds.map((node) => node.y));
+    const maxX = Math.max(...bounds.map((node) => node.x + node.width));
+    const maxY = Math.max(...bounds.map((node) => node.y + node.height));
+    const padding = 80;
+    const contentWidth = Math.max(1, maxX - minX + padding * 2);
+    const contentHeight = Math.max(1, maxY - minY + padding * 2);
+    const viewportRect = viewport.getBoundingClientRect();
+    const viewportWidth = viewportRect.width || viewport.clientWidth;
+    const viewportHeight = viewportRect.height || viewport.clientHeight;
+    const nextZoom = this.clampZoom(Math.min(viewportWidth / contentWidth, viewportHeight / contentHeight));
+    this.zoom.set(nextZoom);
+    this.panX.set((viewportWidth - contentWidth * nextZoom) / 2 - (minX - padding) * nextZoom);
+    this.panY.set((viewportHeight - contentHeight * nextZoom) / 2 - (minY - padding) * nextZoom);
+  }
+
+  onCanvasWheel(event: WheelEvent): void {
+    if (!event.ctrlKey || this.isEditableTarget(event.target)) return;
+    event.preventDefault();
+    const viewport = event.currentTarget as HTMLElement;
+    const rect = viewport.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+    const worldX = (mouseX - this.panX()) / this.zoom();
+    const worldY = (mouseY - this.panY()) / this.zoom();
+    const nextZoom = this.clampZoom(this.zoom() + (event.deltaY < 0 ? 0.1 : -0.1));
+    this.zoom.set(nextZoom);
+    this.panX.set(mouseX - worldX * nextZoom);
+    this.panY.set(mouseY - worldY * nextZoom);
+  }
+
+  private setZoom(value: number): void {
+    this.zoom.set(this.clampZoom(Math.round(value * 100) / 100));
+  }
+
+  private clampZoom(value: number): number {
+    return Math.max(0.25, Math.min(2, value));
+  }
+
+  private shouldStartPan(event: PointerEvent): boolean {
+    return event.button === 1 || (event.button === 0 && this.spacePressed());
+  }
+
+  private startPan(event: PointerEvent, viewport: HTMLElement): void {
+    if (this.isEditableTarget(event.target)) return;
+    event.preventDefault();
+    this.suppressCanvasClick.set(event.button !== 0 || this.spacePressed());
+    this.panState.set({
+      pointerId: event.pointerId,
+      startPointerX: event.clientX,
+      startPointerY: event.clientY,
+      initialPanX: this.panX(),
+      initialPanY: this.panY(),
+      isDragging: false,
+      captureElement: viewport,
+    });
+    viewport.setPointerCapture?.(event.pointerId);
+  }
+
+  private updatePan(event: PointerEvent): void {
+    const state = this.panState();
+    if (!state || state.pointerId !== event.pointerId) return;
+    const distance = Math.hypot(
+      event.clientX - state.startPointerX,
+      event.clientY - state.startPointerY,
+    );
+    if (!state.isDragging && distance < 4) return;
+    if (!state.isDragging) {
+      state.isDragging = true;
+      this.suppressCanvasClick.set(true);
+    }
+    this.panX.set(state.initialPanX + event.clientX - state.startPointerX);
+    this.panY.set(state.initialPanY + event.clientY - state.startPointerY);
+  }
+
+  private finishPan(event: PointerEvent): void {
+    const state = this.panState();
+    if (!state || state.pointerId !== event.pointerId) return;
+    state.captureElement.releasePointerCapture?.(event.pointerId);
+    this.panState.set(null);
+  }
+
+  private isCanvasBackgroundTarget(target: HTMLElement | null): boolean {
+    if (!target) return true;
+    return !target.closest(
+      '.uml-class, .resize-handle, .relation-hit, .relation-line, .association-class-link, .viewport-controls, input, textarea, select, button, [contenteditable="true"]',
+    );
+  }
+
+  private isEditableTarget(target: EventTarget | null): boolean {
+    return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
   }
 
   startAddAttribute(): void {
