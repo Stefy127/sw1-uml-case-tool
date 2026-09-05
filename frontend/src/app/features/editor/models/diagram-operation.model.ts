@@ -60,6 +60,32 @@ export interface UpdateClassStylePayload {
   borderColor: string | null;
 }
 
+export interface CreateRelationPayload {
+  relation: import('./diagram.model').UmlRelation;
+}
+
+export interface DeleteRelationPayload {
+  relationId: string;
+}
+
+export interface ChangeMultiplicityPayload {
+  relationId: string;
+  sourceMultiplicity: import('./diagram.model').Multiplicity;
+  targetMultiplicity: import('./diagram.model').Multiplicity;
+}
+
+export interface ChangeRelationRolesPayload {
+  relationId: string;
+  sourceRole: string;
+  targetRole: string;
+}
+
+export interface ChangeNavigabilityPayload {
+  relationId: string;
+  sourceNavigable: boolean;
+  targetNavigable: boolean;
+}
+
 export interface AddAttributePayload {
   classId: string;
   attribute: import('./diagram.model').UmlAttribute;
@@ -134,6 +160,11 @@ export interface DiagramOperation {
     | MoveClassPayload
     | ResizeClassPayload
     | UpdateClassStylePayload
+    | CreateRelationPayload
+    | DeleteRelationPayload
+    | ChangeMultiplicityPayload
+    | ChangeRelationRolesPayload
+    | ChangeNavigabilityPayload
     | AddAttributePayload
     | UpdateAttributePayload
     | RemoveAttributePayload

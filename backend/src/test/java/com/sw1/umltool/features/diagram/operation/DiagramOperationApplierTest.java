@@ -136,6 +136,20 @@ class DiagramOperationApplierTest {
     }
 
     @Test
+    void createRelationAllowsRecursiveRelation() {
+        addClass("class-1", "Employee");
+        UmlRelation relation = UmlRelation.builder().id("relation-self")
+                .sourceClassId("class-1").targetClassId("class-1").build();
+
+        apply(DiagramOperationType.CREATE_RELATION,
+                CreateRelationPayload.builder().relation(relation).build());
+
+        assertEquals("class-1", diagram.getRelations().get(0).getSourceClassId());
+        assertEquals("class-1", diagram.getRelations().get(0).getTargetClassId());
+        assertEquals("relation-self", viewState.getRelations().get(0).getRelationId());
+    }
+
+    @Test
     void deleteRelationRemovesRelationAndViewState() {
         addClass("class-1", "Customer");
         addClass("class-2", "Order");

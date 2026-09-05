@@ -4,16 +4,23 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { DEV_USER_ID } from '../../../../core/config/dev-user.config';
 import {
+  ChangeMultiplicityPayload,
+  ChangeNavigabilityPayload,
+  ChangeRelationRolesPayload,
+} from '../../models/diagram-operation.model';
+import {
   DiagramDetail,
+  Multiplicity,
   UmlAttribute,
   UmlClass,
   UmlMethod,
   UmlParameter,
+  UmlRelation,
 } from '../../models/diagram.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
 import { DiagramService } from '../../services/diagram.service';
 
-type EditorTool = 'SELECT' | 'CLASS';
+type EditorTool = 'SELECT' | 'CLASS' | 'RELATION';
 type Visibility = 'PUBLIC' | 'PRIVATE' | 'PROTECTED' | 'PACKAGE';
 
 interface AttributeDraft {
@@ -77,6 +84,36 @@ interface ResizeState {
   captureElement: HTMLElement;
 }
 
+interface RenderedRelation {
+  relation: UmlRelation;
+  path: string;
+  markerStart: boolean;
+  markerEnd: boolean;
+  sourceLabelX: number;
+  sourceLabelY: number;
+  targetLabelX: number;
+  targetLabelY: number;
+  sourceRoleX: number;
+  sourceRoleY: number;
+  targetRoleX: number;
+  targetRoleY: number;
+}
+
+interface RelationMultiplicityDraft {
+  source: Multiplicity;
+  target: Multiplicity;
+}
+
+interface RelationRolesDraft {
+  source: string;
+  target: string;
+}
+
+type RelationPropertyOperation =
+  | { type: 'CHANGE_MULTIPLICITY'; payload: ChangeMultiplicityPayload }
+  | { type: 'CHANGE_RELATION_ROLES'; payload: ChangeRelationRolesPayload }
+  | { type: 'CHANGE_NAVIGABILITY'; payload: ChangeNavigabilityPayload };
+
 @Component({
   selector: 'app-editor-page',
   imports: [RouterLink],
@@ -94,6 +131,15 @@ export class EditorPageComponent {
   readonly error = signal('');
   readonly activeTool = signal<EditorTool>('SELECT');
   readonly selectedClassId = signal<string | null>(null);
+  readonly selectedRelationId = signal<string | null>(null);
+  readonly relationSourceClassId = signal<string | null>(null);
+  readonly relationSaving = signal(false);
+  readonly relationError = signal('');
+  readonly pendingRelationDeletion = signal<UmlRelation | null>(null);
+  readonly relationMultiplicityDraft = signal<RelationMultiplicityDraft | null>(null);
+  readonly relationRolesDraft = signal<RelationRolesDraft | null>(null);
+  readonly relationNavigabilityDraft = signal({ source: false, target: false });
+  readonly relationPropertySaving = signal(false);
   readonly editingClassId = signal<string | null>(null);
   readonly editingName = signal('');
   readonly renaming = signal(false);
@@ -114,6 +160,22 @@ export class EditorPageComponent {
     const currentDiagram = this.diagram();
     const classId = this.selectedClassId();
     return currentDiagram?.viewState.nodes.find((node) => node.classId === classId) ?? null;
+  });
+  readonly selectedRelation = computed(() => {
+    const currentDiagram = this.diagram();
+    const relation = currentDiagram?.canonicalModel.relations.find(
+      (candidate) => candidate.id === this.selectedRelationId(),
+    );
+    if (!relation || !currentDiagram) return null;
+    return {
+      relation,
+      sourceName:
+        currentDiagram.canonicalModel.classes.find((item) => item.id === relation.sourceClassId)
+          ?.name ?? relation.sourceClassId,
+      targetName:
+        currentDiagram.canonicalModel.classes.find((item) => item.id === relation.targetClassId)
+          ?.name ?? relation.targetClassId,
+    };
   });
   readonly editingMethod = computed(() => {
     const umlClass = this.selectedClass()?.umlClass;
@@ -157,6 +219,14 @@ export class EditorPageComponent {
       };
     });
   });
+  readonly renderedRelations = computed<RenderedRelation[]>(() => {
+    const currentDiagram = this.diagram();
+    if (!currentDiagram) return [];
+    const classes = this.renderedClasses();
+    return currentDiagram.canonicalModel.relations
+      .map((relation) => this.renderRelation(relation, classes))
+      .filter((item): item is RenderedRelation => item !== null);
+  });
   tab = 'Propiedades';
   tools = ['⌁', '□', '⌁', '◇', '◈', '↗'];
   toolLabels = ['Seleccionar', 'Clase', 'Relación', 'Agregación', 'Composición', 'Herencia'];
@@ -181,6 +251,15 @@ export class EditorPageComponent {
 
   setActiveTool(tool: EditorTool): void {
     this.activeTool.set(tool);
+    if (tool !== 'RELATION') this.relationSourceClassId.set(null);
+    if (tool !== 'RELATION') this.relationError.set('');
+  }
+
+  onEditorKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.activeTool() === 'RELATION') {
+      this.setActiveTool('SELECT');
+      event.preventDefault();
+    }
   }
 
   handleToolbarClick(event: MouseEvent): void {
@@ -188,7 +267,13 @@ export class EditorPageComponent {
     const toolbar = button?.closest('.toolbar');
     if (!button || !toolbar) return;
     const buttons = Array.from(toolbar.querySelectorAll('button'));
-    if (buttons.indexOf(button) === 8) this.removeSelectedClass();
+    if (buttons.indexOf(button) === 8) {
+      if (this.selectedRelationId()) {
+        this.removeSelectedRelation();
+      } else {
+        this.removeSelectedClass();
+      }
+    }
   }
 
   removeSelectedClass(): void {
@@ -332,12 +417,277 @@ export class EditorPageComponent {
       );
       return;
     }
+    if (this.activeTool() === 'RELATION') return;
     this.selectedClassId.set(null);
+    this.selectedRelationId.set(null);
   }
 
   selectClass(umlClass: UmlClass, event: MouseEvent): void {
     event.stopPropagation();
-    if (this.activeTool() === 'SELECT') this.selectedClassId.set(umlClass.id);
+    if (this.activeTool() === 'RELATION') {
+      const sourceClassId = this.relationSourceClassId();
+      if (!sourceClassId) {
+        this.relationSourceClassId.set(umlClass.id);
+        this.selectedClassId.set(umlClass.id);
+        this.selectedRelationId.set(null);
+      } else {
+        this.createRelation(sourceClassId, umlClass.id);
+      }
+      return;
+    }
+    if (this.activeTool() === 'SELECT') {
+      this.selectedClassId.set(umlClass.id);
+      this.selectedRelationId.set(null);
+    }
+  }
+
+  selectRelation(relation: UmlRelation, event: MouseEvent): void {
+    event.stopPropagation();
+    if (this.activeTool() !== 'SELECT') return;
+    this.selectedRelationId.set(relation.id);
+    this.selectedClassId.set(null);
+    this.syncRelationDrafts(relation);
+  }
+
+  updateRelationMultiplicityDraft(side: 'source' | 'target', value: string): void {
+    const draft = this.relationMultiplicityDraft();
+    if (!draft) return;
+    this.relationMultiplicityDraft.set({
+      ...draft,
+      [side]: this.parseMultiplicity(value),
+    });
+  }
+
+  updateRelationRoleDraft(side: 'source' | 'target', value: string): void {
+    const draft = this.relationRolesDraft();
+    if (!draft) return;
+    this.relationRolesDraft.set({ ...draft, [side]: value });
+  }
+
+  updateRelationNavigability(side: 'source' | 'target', value: boolean): void {
+    this.relationNavigabilityDraft.update((draft) => ({ ...draft, [side]: value }));
+  }
+
+  saveRelationMultiplicity(): void {
+    const relation = this.selectedRelation()?.relation;
+    const draft = this.relationMultiplicityDraft();
+    if (!relation || !draft || this.relationPropertySaving()) return;
+    if (
+      this.sameMultiplicity(relation.sourceMultiplicity, draft.source) &&
+      this.sameMultiplicity(relation.targetMultiplicity, draft.target)
+    ) {
+      return;
+    }
+    this.executeRelationProperty({
+      type: 'CHANGE_MULTIPLICITY',
+      payload: {
+        relationId: relation.id,
+        sourceMultiplicity: draft.source,
+        targetMultiplicity: draft.target,
+      },
+    });
+  }
+
+  saveRelationRoles(): void {
+    const relation = this.selectedRelation()?.relation;
+    const draft = this.relationRolesDraft();
+    if (!relation || !draft || this.relationPropertySaving()) return;
+    if ((relation.sourceRole ?? '') === draft.source && (relation.targetRole ?? '') === draft.target) {
+      return;
+    }
+    this.executeRelationProperty({
+      type: 'CHANGE_RELATION_ROLES',
+      payload: {
+        relationId: relation.id,
+        sourceRole: draft.source,
+        targetRole: draft.target,
+      },
+    });
+  }
+
+  saveRelationNavigability(): void {
+    const relation = this.selectedRelation()?.relation;
+    const draft = this.relationNavigabilityDraft();
+    if (!relation || this.relationPropertySaving()) return;
+    if (relation.sourceNavigable === draft.source && relation.targetNavigable === draft.target) {
+      return;
+    }
+    this.executeRelationProperty({
+      type: 'CHANGE_NAVIGABILITY',
+      payload: {
+        relationId: relation.id,
+        sourceNavigable: draft.source,
+        targetNavigable: draft.target,
+      },
+    });
+  }
+
+  multiplicityValue(multiplicity: Multiplicity | null | undefined): string {
+    if (!multiplicity) return '';
+    return multiplicity.lower === multiplicity.upper
+      ? multiplicity.lower
+      : `${multiplicity.lower}..${multiplicity.upper}`;
+  }
+
+  private syncRelationDrafts(relation: UmlRelation): void {
+    this.relationMultiplicityDraft.set({
+      source: { ...relation.sourceMultiplicity },
+      target: { ...relation.targetMultiplicity },
+    });
+    this.relationRolesDraft.set({
+      source: relation.sourceRole ?? '',
+      target: relation.targetRole ?? '',
+    });
+    this.relationNavigabilityDraft.set({
+      source: relation.sourceNavigable,
+      target: relation.targetNavigable,
+    });
+  }
+
+  private parseMultiplicity(value: string): Multiplicity {
+    const normalized = value.trim() || '1';
+    const parts = normalized.split('..', 2);
+    return parts.length === 2
+      ? { lower: parts[0].trim(), upper: parts[1].trim() }
+      : { lower: normalized, upper: normalized };
+  }
+
+  private sameMultiplicity(left: Multiplicity | null | undefined, right: Multiplicity): boolean {
+    return left?.lower === right.lower && left?.upper === right.upper;
+  }
+
+  private executeRelationProperty(operation: RelationPropertyOperation): void {
+    const currentDiagram = this.diagram();
+    if (!currentDiagram) return;
+    this.relationPropertySaving.set(true);
+    this.relationError.set('');
+    this.operationService
+      .execute(this.diagramId, {
+        operation: {
+          operationId: crypto.randomUUID(),
+          diagramId: this.diagramId,
+          userId: DEV_USER_ID,
+          baseVersion: currentDiagram.version,
+          type: operation.type,
+          payload: operation.payload,
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.applyOperationResponse(response);
+          const updated = response.canonicalModel.relations.find(
+            (relation) => relation.id === operation.payload.relationId,
+          );
+          if (updated) this.syncRelationDrafts(updated);
+          this.relationPropertySaving.set(false);
+        },
+        error: (error: unknown) => {
+          this.relationPropertySaving.set(false);
+          this.relationError.set(this.operationError(error, 'No se pudo actualizar la relación.'));
+          console.error(
+            'No se pudo actualizar la relación.',
+            error instanceof HttpErrorResponse ? error.status : 'Error HTTP',
+          );
+        },
+      });
+  }
+
+  private createRelation(sourceClassId: string, targetClassId: string): void {
+    const currentDiagram = this.diagram();
+    if (!currentDiagram || this.relationSaving()) return;
+    const relationId = crypto.randomUUID();
+    const relation: UmlRelation = {
+      id: relationId,
+      sourceClassId,
+      targetClassId,
+      type: 'ASSOCIATION',
+      sourceMultiplicity: { lower: '1', upper: '1' },
+      targetMultiplicity: { lower: '1', upper: '1' },
+      sourceRole: null,
+      targetRole: null,
+      sourceNavigable: false,
+      targetNavigable: false,
+    };
+    this.relationSaving.set(true);
+    this.relationError.set('');
+    this.operationService
+      .execute(this.diagramId, {
+        operation: {
+          operationId: crypto.randomUUID(),
+          diagramId: this.diagramId,
+          userId: DEV_USER_ID,
+          baseVersion: currentDiagram.version,
+          type: 'CREATE_RELATION',
+          payload: { relation },
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.applyOperationResponse(response);
+          this.relationSaving.set(false);
+          this.relationSourceClassId.set(null);
+          this.activeTool.set('SELECT');
+          this.selectedRelationId.set(relationId);
+          this.selectedClassId.set(null);
+          const created = response.canonicalModel.relations.find((item) => item.id === relationId);
+          if (created) this.syncRelationDrafts(created);
+        },
+        error: (error: unknown) => {
+          this.relationSaving.set(false);
+          this.relationError.set(this.operationError(error, 'No se pudo crear la relación.'));
+          console.error(
+            'No se pudo crear la relación.',
+            error instanceof HttpErrorResponse ? error.status : 'Error HTTP',
+          );
+        },
+      });
+  }
+
+  removeSelectedRelation(): void {
+    const relation = this.selectedRelation()?.relation;
+    if (!relation || this.relationSaving()) return;
+    this.relationError.set('');
+    this.pendingRelationDeletion.set(relation);
+  }
+
+  cancelRelationDeletion(): void {
+    if (this.relationSaving()) return;
+    this.pendingRelationDeletion.set(null);
+    this.relationError.set('');
+  }
+
+  confirmRelationDeletion(): void {
+    const currentDiagram = this.diagram();
+    const relation = this.pendingRelationDeletion();
+    if (!currentDiagram || !relation || this.relationSaving()) return;
+    this.relationSaving.set(true);
+    this.operationService
+      .execute(this.diagramId, {
+        operation: {
+          operationId: crypto.randomUUID(),
+          diagramId: this.diagramId,
+          userId: DEV_USER_ID,
+          baseVersion: currentDiagram.version,
+          type: 'DELETE_RELATION',
+          payload: { relationId: relation.id },
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.applyOperationResponse(response);
+          this.relationSaving.set(false);
+          this.pendingRelationDeletion.set(null);
+          this.selectedRelationId.set(null);
+        },
+        error: (error: unknown) => {
+          this.relationSaving.set(false);
+          this.relationError.set(this.operationError(error, 'No se pudo eliminar la relación.'));
+          console.error(
+            'No se pudo eliminar la relación.',
+            error instanceof HttpErrorResponse ? error.status : 'Error HTTP',
+          );
+        },
+      });
   }
 
   onClassPointerDown(umlClass: UmlClass, event: PointerEvent): void {
@@ -1230,6 +1580,86 @@ export class EditorPageComponent {
     return error instanceof HttpErrorResponse && error.status === 409
       ? 'El diagrama cambió en otra sesión. Recarga para obtener la versión más reciente.'
       : fallback;
+  }
+
+  private renderRelation(
+    relation: UmlRelation,
+    classes: RenderedUmlClass[],
+  ): RenderedRelation | null {
+    const source = classes.find((item) => item.umlClass.id === relation.sourceClassId);
+    const target = classes.find((item) => item.umlClass.id === relation.targetClassId);
+    if (!source || !target) return null;
+
+    if (source.umlClass.id === target.umlClass.id) {
+      const startX = source.x + source.width;
+      const startY = source.y + 34;
+      const endY = source.y + Math.max(72, source.height - 34);
+      const loopX = startX + 72;
+      return {
+        relation,
+        path: `M ${startX} ${startY} C ${loopX} ${startY}, ${loopX} ${endY}, ${startX} ${endY}`,
+        markerStart: relation.targetNavigable,
+        markerEnd: relation.sourceNavigable,
+        sourceLabelX: startX + 18,
+        sourceLabelY: startY - 8,
+        targetLabelX: startX + 18,
+        targetLabelY: endY + 16,
+        sourceRoleX: startX + 18,
+        sourceRoleY: startY - 22,
+        targetRoleX: startX + 18,
+        targetRoleY: endY + 30,
+      };
+    }
+
+    const sourceCenterX = source.x + source.width / 2;
+    const sourceCenterY = source.y + source.height / 2;
+    const targetCenterX = target.x + target.width / 2;
+    const targetCenterY = target.y + target.height / 2;
+    const deltaX = targetCenterX - sourceCenterX;
+    const deltaY = targetCenterY - sourceCenterY;
+    let sourceX = sourceCenterX;
+    let sourceY = sourceCenterY;
+    let targetX = targetCenterX;
+    let targetY = targetCenterY;
+
+    if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+      const sourceOnRight = deltaX >= 0;
+      sourceX = sourceOnRight ? source.x + source.width : source.x;
+      targetX = sourceOnRight ? target.x : target.x + target.width;
+    } else {
+      const sourceBelow = deltaY >= 0;
+      sourceY = sourceBelow ? source.y + source.height : source.y;
+      targetY = sourceBelow ? target.y : target.y + target.height;
+    }
+
+    return {
+      relation,
+      path: `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`,
+      markerStart: relation.targetNavigable,
+      markerEnd: relation.sourceNavigable,
+      sourceLabelX: sourceX + (targetX - sourceX) * 0.25,
+      sourceLabelY: sourceY + (targetY - sourceY) * 0.25 - 8,
+      targetLabelX: sourceX + (targetX - sourceX) * 0.75,
+      targetLabelY: sourceY + (targetY - sourceY) * 0.75 - 8,
+      sourceRoleX: sourceX + (targetX - sourceX) * 0.25,
+      sourceRoleY: sourceY + (targetY - sourceY) * 0.25 - 22,
+      targetRoleX: sourceX + (targetX - sourceX) * 0.75,
+      targetRoleY: sourceY + (targetY - sourceY) * 0.75 - 22,
+    };
+  }
+
+  multiplicityLabel(multiplicity: { lower: string; upper: string } | null | undefined): string {
+    if (!multiplicity) return '';
+    return multiplicity.lower === multiplicity.upper
+      ? multiplicity.lower
+      : `${multiplicity.lower}..${multiplicity.upper}`;
+  }
+
+  relationEndpointName(classId: string): string {
+    return (
+      this.diagram()?.canonicalModel.classes.find((umlClass) => umlClass.id === classId)?.name ??
+      classId
+    );
   }
 
   isAbstract(umlClass: UmlClass): boolean {

@@ -3,7 +3,7 @@ import { ActivatedRoute, provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { NEVER, of, throwError } from 'rxjs';
 
-import { DiagramDetail, UmlAttribute, UmlMethod, UmlParameter } from '../../models/diagram.model';
+import { DiagramDetail, UmlAttribute, UmlMethod, UmlParameter, UmlRelation } from '../../models/diagram.model';
 import { ExecuteDiagramOperationRequest } from '../../models/diagram-operation.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
 import { DiagramService } from '../../services/diagram.service';
@@ -92,6 +92,124 @@ describe('EditorPageComponent', () => {
     expect(executions).toBe(0);
     expect(page.classDeleteError()).toBe('Selecciona una clase para eliminarla.');
     expect(page.pendingClassDeletion()).toBeNull();
+  });
+
+  it('edits multiplicities and roles through typed relation operations', async () => {
+    const current = diagramWithClass();
+    const relation: UmlRelation = {
+      id: 'r1',
+      sourceClassId: 'c1',
+      targetClassId: 'c1',
+      type: 'ASSOCIATION',
+      sourceMultiplicity: { lower: '1', upper: '1' },
+      targetMultiplicity: { lower: '1', upper: '1' },
+      sourceRole: null,
+      targetRole: null,
+      sourceNavigable: false,
+      targetNavigable: false,
+    };
+    current.canonicalModel.relations = [relation];
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure(
+      {
+        execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
+          request = value;
+          const payload = value.operation.payload as {
+            relationId: string;
+            sourceMultiplicity?: UmlRelation['sourceMultiplicity'];
+            targetMultiplicity?: UmlRelation['targetMultiplicity'];
+            sourceRole?: string;
+            targetRole?: string;
+          };
+          const updated = {
+            ...relation,
+            ...(value.operation.type === 'CHANGE_MULTIPLICITY'
+              ? { sourceMultiplicity: payload.sourceMultiplicity, targetMultiplicity: payload.targetMultiplicity }
+              : { sourceRole: payload.sourceRole ?? null, targetRole: payload.targetRole ?? null }),
+          };
+          return of({
+            newVersion: current.version + 1,
+            canonicalModel: { ...current.canonicalModel, relations: [updated] },
+            viewState: current.viewState,
+          });
+        },
+      },
+      current,
+    );
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectRelation(relation, { stopPropagation: () => {} } as unknown as MouseEvent);
+    page.updateRelationMultiplicityDraft('source', '0..1');
+    page.updateRelationMultiplicityDraft('target', '0..*');
+    page.saveRelationMultiplicity();
+    expect(request?.operation.type).toBe('CHANGE_MULTIPLICITY');
+    expect(request?.operation.baseVersion).toBe(7);
+    expect(request?.operation.payload).toMatchObject({
+      relationId: 'r1',
+      sourceMultiplicity: { lower: '0', upper: '1' },
+      targetMultiplicity: { lower: '0', upper: '*' },
+    });
+    expect(page.diagram()?.canonicalModel.relations[0].targetMultiplicity.upper).toBe('*');
+
+    page.updateRelationRoleDraft('source', 'supervisor');
+    page.updateRelationRoleDraft('target', 'subordinados');
+    page.saveRelationRoles();
+    expect(request?.operation.type).toBe('CHANGE_RELATION_ROLES');
+    expect(request?.operation.payload).toMatchObject({
+      relationId: 'r1',
+      sourceRole: 'supervisor',
+      targetRole: 'subordinados',
+    });
+    expect(page.diagram()?.canonicalModel.relations[0].sourceClassId).toBe(
+      page.diagram()?.canonicalModel.relations[0].targetClassId,
+    );
+  });
+
+  it('edits navigability and renders a recursive relation loop with both labels', async () => {
+    const current = diagramWithClass();
+    const relation: UmlRelation = {
+      id: 'r1',
+      sourceClassId: 'c1',
+      targetClassId: 'c1',
+      type: 'ASSOCIATION',
+      sourceMultiplicity: { lower: '0', upper: '1' },
+      targetMultiplicity: { lower: '0', upper: '*' },
+      sourceRole: 'supervisor',
+      targetRole: 'subordinados',
+      sourceNavigable: false,
+      targetNavigable: false,
+    };
+    current.canonicalModel.relations = [relation];
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure(
+      {
+        execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
+          request = value;
+          return of({
+            newVersion: 8,
+            canonicalModel: {
+              ...current.canonicalModel,
+              relations: [{ ...relation, sourceNavigable: true }],
+            },
+            viewState: current.viewState,
+          });
+        },
+      },
+      current,
+    );
+    const fixture = TestBed.createComponent(EditorPageComponent);
+    await fixture.whenStable();
+    const page = fixture.componentInstance;
+    page.selectRelation(relation, { stopPropagation: () => {} } as unknown as MouseEvent);
+    page.updateRelationNavigability('source', true);
+    page.saveRelationNavigability();
+    expect(request?.operation.type).toBe('CHANGE_NAVIGABILITY');
+    expect(request?.operation.payload).toMatchObject({ relationId: 'r1', sourceNavigable: true });
+    expect(page.renderedRelations()[0].path).toContain('C');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('supervisor');
+    expect(fixture.nativeElement.textContent).toContain('subordinados');
+    expect(page.diagram()?.canonicalModel.relations[0].sourceClassId).toBe('c1');
+    expect(page.diagram()?.canonicalModel.relations[0].targetClassId).toBe('c1');
   });
 
   it('keeps the class and modal open on a version conflict', async () => {
@@ -307,7 +425,7 @@ describe('EditorPageComponent', () => {
     await configure({
       execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
         request = value;
-        const classId = value.operation.payload.classId;
+        const classId = (value.operation.payload as unknown as { classId: string }).classId;
         return of({
           newVersion: 8,
           canonicalModel: {
@@ -339,8 +457,9 @@ describe('EditorPageComponent', () => {
     expect((request?.operation.payload as { x: number }).x).toBe(0);
     expect((request?.operation.payload as { y: number }).y).toBe(120);
     expect(page.activeTool()).toBe('SELECT');
-    expect(page.selectedClassId()).toBe(request?.operation.payload.classId);
-    expect(page.editingClassId()).toBe(request?.operation.payload.classId);
+    const createdClassId = (request?.operation.payload as unknown as { classId: string }).classId;
+    expect(page.selectedClassId()).toBe(createdClassId);
+    expect(page.editingClassId()).toBe(createdClassId);
   });
 
   it('renames inline with RENAME_CLASS and uses the response as authority', async () => {

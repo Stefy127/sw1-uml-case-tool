@@ -1,4 +1,4 @@
-<div class="editor">
+<div class="editor" (keydown)="onEditorKeydown($event)" tabindex="0">
   <header class="editor-head">
     <a routerLink="/projects" class="editor-brand"
       >← <span class="brand-mark">S</span><b>SW1</b> UML ›</a
@@ -20,9 +20,10 @@
         <button
           [class.active]="
             ($index === 0 && activeTool() === 'SELECT') ||
-            ($index === 1 && activeTool() === 'CLASS')
+            ($index === 1 && activeTool() === 'CLASS') ||
+            ($index === 2 && activeTool() === 'RELATION')
           "
-          (click)="$index === 0 ? setActiveTool('SELECT') : $index === 1 && setActiveTool('CLASS')"
+          (click)="$index === 0 ? setActiveTool('SELECT') : $index === 1 ? setActiveTool('CLASS') : $index === 2 ? setActiveTool('RELATION') : null"
         >
           <span>{{ tool }}</span
           ><small>{{
@@ -38,6 +39,7 @@
     <main
       class="canvas"
       [class.insertion-mode]="activeTool() === 'CLASS'"
+      [class.relation-mode]="activeTool() === 'RELATION'"
       (click)="onCanvasClick($event)"
       (pointermove)="onCanvasPointerMove($event)"
       (pointerup)="onCanvasPointerUp($event)"
@@ -52,10 +54,45 @@
       } @else if (renderedClasses().length === 0) {
         <div class="canvas-state">Este diagrama aún no tiene clases</div>
       }
+      <svg class="relations-layer" aria-hidden="true">
+        <defs>
+          <marker id="relation-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M 0 0 L 8 4 L 0 8 z" />
+          </marker>
+        </defs>
+        @for (item of renderedRelations(); track item.relation.id) {
+          <path class="relation-hit" [attr.d]="item.path" (click)="selectRelation(item.relation, $event)" />
+          <path
+            class="relation-line"
+            [class.selected]="item.relation.id === selectedRelationId()"
+            [attr.d]="item.path"
+            [attr.marker-start]="item.markerStart ? 'url(#relation-arrow)' : null"
+            [attr.marker-end]="item.markerEnd ? 'url(#relation-arrow)' : null"
+            (click)="selectRelation(item.relation, $event)"
+          />
+          <text class="relation-label" [attr.x]="item.sourceLabelX" [attr.y]="item.sourceLabelY">
+            {{ multiplicityLabel(item.relation.sourceMultiplicity) }}
+          </text>
+          <text class="relation-label" [attr.x]="item.targetLabelX" [attr.y]="item.targetLabelY">
+            {{ multiplicityLabel(item.relation.targetMultiplicity) }}
+          </text>
+          @if (item.relation.sourceRole) {
+            <text class="relation-role-label" [attr.x]="item.sourceRoleX" [attr.y]="item.sourceRoleY">
+              {{ item.relation.sourceRole }}
+            </text>
+          }
+          @if (item.relation.targetRole) {
+            <text class="relation-role-label" [attr.x]="item.targetRoleX" [attr.y]="item.targetRoleY">
+              {{ item.relation.targetRole }}
+            </text>
+          }
+        }
+      </svg>
       @for (item of renderedClasses(); track item.umlClass.id) {
         <article
           class="uml-class"
           [class.selected]="item.umlClass.id === selectedClassId()"
+          [class.relation-source]="item.umlClass.id === relationSourceClassId()"
           [class.dragging]="dragState()?.classId === item.umlClass.id && dragState()?.isDragging"
           (click)="selectClass(item.umlClass, $event)"
           (pointerdown)="onClassPointerDown(item.umlClass, $event)"
@@ -137,7 +174,80 @@
       @if (tab === 'Propiedades') {
         <div class="inspect-content">
           <span class="section-label">Elemento seleccionado</span>
-          @if (selectedClass(); as selected) {
+          @if (selectedRelation(); as selectedRelation) {
+            <div class="selected-name">
+              <span>↔</span><b>Relación</b><small>Asociación</small>
+            </div>
+            <div class="relation-inspector">
+              <p><span>Tipo</span><b>Asociación</b></p>
+              <p><span>Origen</span><b>{{ selectedRelation.sourceName }}</b></p>
+              <p><span>Destino</span><b>{{ selectedRelation.targetName }}</b></p>
+            </div>
+            @if (relationError()) {
+              <p class="attribute-error">{{ relationError() }}</p>
+            }
+            @if (relationMultiplicityDraft(); as multiplicityDraft) {
+              <div class="relation-property-section">
+                <span class="section-label">Propiedades de relación</span>
+                <label class="relation-field">
+                  Multiplicidad origen
+                  <input
+                    list="multiplicity-options"
+                    [value]="multiplicityValue(multiplicityDraft.source)"
+                    (change)="updateRelationMultiplicityDraft('source', $any($event.target).value)"
+                  />
+                </label>
+                <label class="relation-field">
+                  Multiplicidad destino
+                  <input
+                    list="multiplicity-options"
+                    [value]="multiplicityValue(multiplicityDraft.target)"
+                    (change)="updateRelationMultiplicityDraft('target', $any($event.target).value)"
+                  />
+                </label>
+                <datalist id="multiplicity-options">
+                  <option value="1"></option>
+                  <option value="0..1"></option>
+                  <option value="*"></option>
+                  <option value="0..*"></option>
+                  <option value="1..*"></option>
+                </datalist>
+                <button class="btn btn-primary relation-save" type="button" [disabled]="relationPropertySaving()" (click)="saveRelationMultiplicity()">
+                  {{ relationPropertySaving() ? 'Guardando...' : 'Guardar cambios' }}
+                </button>
+              </div>
+            }
+            @if (relationRolesDraft(); as rolesDraft) {
+              <div class="relation-property-section">
+                <span class="section-label">Roles</span>
+                <label class="relation-field">
+                  Rol origen
+                  <input placeholder="Ej. supervisor" [value]="rolesDraft.source" (input)="updateRelationRoleDraft('source', $any($event.target).value)" />
+                </label>
+                <label class="relation-field">
+                  Rol destino
+                  <input placeholder="Ej. subordinados" [value]="rolesDraft.target" (input)="updateRelationRoleDraft('target', $any($event.target).value)" />
+                </label>
+                <button class="btn btn-primary relation-save" type="button" [disabled]="relationPropertySaving()" (click)="saveRelationRoles()">
+                  {{ relationPropertySaving() ? 'Guardando...' : 'Guardar cambios' }}
+                </button>
+              </div>
+            }
+            <div class="relation-property-section">
+              <span class="section-label">Navegabilidad</span>
+              <label class="relation-check">
+                <input type="checkbox" [checked]="relationNavigabilityDraft().source" (change)="updateRelationNavigability('source', $any($event.target).checked)" />
+                Origen → Destino
+              </label>
+              <label class="relation-check">
+                <input type="checkbox" [checked]="relationNavigabilityDraft().target" (change)="updateRelationNavigability('target', $any($event.target).checked)" />
+                Destino → Origen
+              </label>
+              <button class="btn btn-primary relation-save" type="button" [disabled]="relationPropertySaving()" (click)="saveRelationNavigability()">
+                {{ relationPropertySaving() ? 'Guardando...' : 'Guardar cambios' }}
+              </button>
+            </div>
+          } @else if (selectedClass(); as selected) {
             <div class="selected-name">
               <span>◇</span><b>{{ selected.umlClass.name }}</b
               ><small>Clase UML</small>
@@ -549,6 +659,36 @@
                 (click)="confirmClassDeletion()"
               >
                 {{ classDeleteSaving() ? 'Eliminando...' : 'Eliminar' }}
+              </button>
+            </div>
+          </section>
+        </div>
+      }
+      @if (pendingRelationDeletion(); as relation) {
+        <div class="attribute-modal-backdrop" role="presentation" (click)="cancelRelationDeletion()">
+          <section
+            class="attribute-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-relation-title"
+            (click)="$event.stopPropagation()"
+          >
+            <div class="attribute-modal-icon">↔</div>
+            <h2 id="delete-relation-title">Eliminar relación</h2>
+            <p>
+              ¿Seguro que deseas eliminar esta relación?<br />
+              <small>{{ relationEndpointName(relation.sourceClassId) }} → {{ relationEndpointName(relation.targetClassId) }}</small>
+            </p>
+            <small>Esta acción no se puede deshacer.</small>
+            @if (relationError()) {
+              <p class="attribute-error">{{ relationError() }}</p>
+            }
+            <div class="attribute-modal-actions">
+              <button class="btn btn-ghost" type="button" [disabled]="relationSaving()" (click)="cancelRelationDeletion()">
+                Cancelar
+              </button>
+              <button class="btn btn-danger" type="button" [disabled]="relationSaving()" (click)="confirmRelationDeletion()">
+                {{ relationSaving() ? 'Eliminando...' : 'Eliminar' }}
               </button>
             </div>
           </section>
