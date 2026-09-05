@@ -89,6 +89,9 @@ export interface NodeViewState {
   y: number;
   width: number;
   height: number;
+  headerColor?: string | null;
+  bodyColor?: string | null;
+  borderColor?: string | null;
 }
 
 export interface RelationViewState {

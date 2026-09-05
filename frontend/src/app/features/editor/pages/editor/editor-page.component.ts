@@ -44,6 +44,9 @@ interface RenderedUmlClass {
   y: number;
   width: number;
   height: number;
+  headerColor: string | null;
+  bodyColor: string | null;
+  borderColor: string | null;
 }
 
 interface DragState {
@@ -58,6 +61,19 @@ interface DragState {
   previewX: number;
   previewY: number;
   isDragging: boolean;
+  captureElement: HTMLElement;
+}
+
+interface ResizeState {
+  classId: string;
+  pointerId: number;
+  startPointerX: number;
+  startPointerY: number;
+  initialWidth: number;
+  initialHeight: number;
+  previewWidth: number;
+  previewHeight: number;
+  isResizing: boolean;
   captureElement: HTMLElement;
 }
 
@@ -84,11 +100,20 @@ export class EditorPageComponent {
   readonly renameError = signal('');
   readonly dragState = signal<DragState | null>(null);
   readonly moving = signal(false);
+  readonly resizeState = signal<ResizeState | null>(null);
+  readonly resizing = signal(false);
+  readonly styleSaving = signal(false);
+  readonly styleError = signal('');
   readonly selectedClass = computed(() => {
     const umlClass = this.diagram()?.canonicalModel.classes.find(
       (candidate) => candidate.id === this.selectedClassId(),
     );
     return umlClass ? { umlClass } : null;
+  });
+  readonly selectedNode = computed(() => {
+    const currentDiagram = this.diagram();
+    const classId = this.selectedClassId();
+    return currentDiagram?.viewState.nodes.find((node) => node.classId === classId) ?? null;
   });
   readonly editingMethod = computed(() => {
     const umlClass = this.selectedClass()?.umlClass;
@@ -124,8 +149,11 @@ export class EditorPageComponent {
         umlClass,
         x: this.previewX(umlClass.id, node?.x ?? 80 + index * 40),
         y: this.previewY(umlClass.id, node?.y ?? 80 + index * 40),
-        width: node?.width ?? 240,
-        height: node?.height ?? 180,
+        width: this.previewWidth(node?.classId ?? umlClass.id, node?.width ?? 240),
+        height: this.previewHeight(node?.classId ?? umlClass.id, node?.height ?? 180),
+        headerColor: node?.headerColor ?? null,
+        bodyColor: node?.bodyColor ?? null,
+        borderColor: node?.borderColor ?? null,
       };
     });
   });
@@ -225,6 +253,75 @@ export class EditorPageComponent {
       });
   }
 
+  changeClassStyle(
+    field: 'headerColor' | 'bodyColor' | 'borderColor',
+    event: Event,
+  ): void {
+    const color = (event.target as HTMLInputElement).value;
+    const node = this.selectedNode();
+    if (!node || this.styleSaving()) return;
+    this.executeClassStyle({
+      classId: node.classId,
+      headerColor: field === 'headerColor' ? color : (node.headerColor ?? null),
+      bodyColor: field === 'bodyColor' ? color : (node.bodyColor ?? null),
+      borderColor: field === 'borderColor' ? color : (node.borderColor ?? null),
+    });
+  }
+
+  resetClassStyle(): void {
+    const node = this.selectedNode();
+    if (!node || this.styleSaving()) return;
+    this.executeClassStyle({
+      classId: node.classId,
+      headerColor: null,
+      bodyColor: null,
+      borderColor: null,
+    });
+  }
+
+  classStyleColor(color: string | null | undefined, variable: string, fallback: string): string {
+    if (color) return color;
+    if (typeof document === 'undefined') return fallback;
+    return getComputedStyle(document.documentElement).getPropertyValue(variable).trim() || fallback;
+  }
+
+  private executeClassStyle(payload: {
+    classId: string;
+    headerColor: string | null;
+    bodyColor: string | null;
+    borderColor: string | null;
+  }): void {
+    const currentDiagram = this.diagram();
+    if (!currentDiagram) return;
+    this.styleSaving.set(true);
+    this.styleError.set('');
+    this.operationService
+      .execute(this.diagramId, {
+        operation: {
+          operationId: crypto.randomUUID(),
+          diagramId: this.diagramId,
+          userId: DEV_USER_ID,
+          baseVersion: currentDiagram.version,
+          type: 'UPDATE_CLASS_STYLE',
+          payload,
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.applyOperationResponse(response);
+          this.styleSaving.set(false);
+        },
+        error: (error: unknown) => {
+          this.styleSaving.set(false);
+          this.styleError.set(this.operationError(error, 'No se pudo actualizar la apariencia.'));
+          console.error(
+            'No se pudo actualizar la apariencia.',
+            error instanceof HttpErrorResponse ? error.status : 'Error HTTP',
+          );
+        },
+      });
+  }
+
   onCanvasClick(event: MouseEvent): void {
     if (this.activeTool() === 'CLASS') {
       const canvas = event.currentTarget as HTMLElement;
@@ -273,7 +370,31 @@ export class EditorPageComponent {
     state.captureElement.setPointerCapture?.(event.pointerId);
   }
 
+  onResizePointerDown(item: RenderedUmlClass, event: PointerEvent): void {
+    event.stopPropagation();
+    if (this.activeTool() !== 'SELECT' || this.resizing() || this.moving()) return;
+    const state: ResizeState = {
+      classId: item.umlClass.id,
+      pointerId: event.pointerId,
+      startPointerX: event.clientX,
+      startPointerY: event.clientY,
+      initialWidth: item.width,
+      initialHeight: item.height,
+      previewWidth: item.width,
+      previewHeight: item.height,
+      isResizing: false,
+      captureElement: event.currentTarget as HTMLElement,
+    };
+    this.selectedClassId.set(item.umlClass.id);
+    this.resizeState.set(state);
+    state.captureElement.setPointerCapture?.(event.pointerId);
+  }
+
   onCanvasPointerMove(event: PointerEvent): void {
+    if (this.resizeState()) {
+      this.updateResizePreview(event);
+      return;
+    }
     const state = this.dragState();
     if (!state || state.pointerId !== event.pointerId || this.activeTool() !== 'SELECT') return;
     const distance = Math.hypot(
@@ -300,10 +421,83 @@ export class EditorPageComponent {
   }
 
   onCanvasPointerUp(event: PointerEvent): void {
+    if (this.resizeState()) {
+      this.finishResize(event);
+      return;
+    }
     this.finishDrag(event);
   }
   onCanvasPointerCancel(event: PointerEvent): void {
+    if (this.resizeState()) {
+      this.finishResize(event, true);
+      return;
+    }
     this.finishDrag(event, true);
+  }
+
+  private updateResizePreview(event: PointerEvent): void {
+    const state = this.resizeState();
+    if (!state || state.pointerId !== event.pointerId || this.activeTool() !== 'SELECT') return;
+    const next = {
+      ...state,
+      isResizing:
+        state.isResizing ||
+        Math.hypot(event.clientX - state.startPointerX, event.clientY - state.startPointerY) >= 4,
+      previewWidth: Math.max(180, state.initialWidth + event.clientX - state.startPointerX),
+      previewHeight: Math.max(120, state.initialHeight + event.clientY - state.startPointerY),
+    };
+    this.resizeState.set(next);
+  }
+
+  private finishResize(event: PointerEvent, cancelled = false): void {
+    const state = this.resizeState();
+    if (!state || state.pointerId !== event.pointerId) return;
+    state.captureElement.releasePointerCapture?.(event.pointerId);
+    if (cancelled || !state.isResizing) {
+      this.resizeState.set(null);
+      return;
+    }
+    if (state.previewWidth === state.initialWidth && state.previewHeight === state.initialHeight) {
+      this.resizeState.set(null);
+      return;
+    }
+    const currentDiagram = this.diagram();
+    if (!currentDiagram) {
+      this.resizeState.set(null);
+      return;
+    }
+    this.resizing.set(true);
+    this.operationService
+      .execute(this.diagramId, {
+        operation: {
+          operationId: crypto.randomUUID(),
+          diagramId: this.diagramId,
+          userId: DEV_USER_ID,
+          baseVersion: currentDiagram.version,
+          type: 'RESIZE_CLASS',
+          payload: {
+            classId: state.classId,
+            width: state.previewWidth,
+            height: state.previewHeight,
+          },
+        },
+      })
+      .subscribe({
+        next: (response) => {
+          this.applyOperationResponse(response);
+          this.resizing.set(false);
+          this.resizeState.set(null);
+        },
+        error: (error: unknown) => {
+          this.resizing.set(false);
+          this.resizeState.set(null);
+          this.error.set(this.operationError(error, 'No se pudo cambiar el tamaño de la clase.'));
+          console.error(
+            'No se pudo cambiar el tamaño de la clase.',
+            error instanceof HttpErrorResponse ? error.status : 'Error HTTP',
+          );
+        },
+      });
   }
 
   private finishDrag(event: PointerEvent, cancelled = false): void {
@@ -365,6 +559,14 @@ export class EditorPageComponent {
   private previewY(classId: string, fallback: number): number {
     const state = this.dragState();
     return state?.classId === classId && state.isDragging ? state.previewY : fallback;
+  }
+  private previewWidth(classId: string, fallback: number): number {
+    const state = this.resizeState();
+    return state?.classId === classId && state.isResizing ? state.previewWidth : fallback;
+  }
+  private previewHeight(classId: string, fallback: number): number {
+    const state = this.resizeState();
+    return state?.classId === classId && state.isResizing ? state.previewHeight : fallback;
   }
   private limitPosition(value: number, canvasSize: number, itemSize: number): number {
     return Math.max(0, Math.min(value, Math.max(0, canvasSize - itemSize)));

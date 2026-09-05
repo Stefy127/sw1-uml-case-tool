@@ -19,6 +19,7 @@ import com.sw1.umltool.features.diagram.operation.payload.CreateClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.DeleteClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.MoveClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.RenameClassPayload;
+import com.sw1.umltool.features.diagram.operation.payload.UpdateClassStylePayload;
 import com.sw1.umltool.features.diagram.repository.DiagramRepository;
 import com.sw1.umltool.features.diagram.validation.CanonicalModelValidator;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,6 +79,23 @@ class PersistentDiagramOperationServiceTest {
                 .getClasses().get(0).getName());
         assertEquals(50, serializer.deserializeViewState(entity.getViewStateJson()).getNodes().get(0).getX());
         assertEquals(60, serializer.deserializeViewState(entity.getViewStateJson()).getNodes().get(0).getY());
+    }
+
+    @Test
+    void stylePersistsOnlyInViewStateAndIncrementsVersion() {
+        UmlDiagram original = serializer.deserializeCanonical(entity.getCanonicalModelJson());
+
+        service.execute("diagram-1", operation("op-1", 0, DiagramOperationType.UPDATE_CLASS_STYLE,
+                UpdateClassStylePayload.builder().classId("class-1").headerColor("#eee8ff")
+                        .bodyColor("#ffffff").borderColor("#8a7be8").build()));
+
+        DiagramViewState viewState = serializer.deserializeViewState(entity.getViewStateJson());
+        assertEquals("#eee8ff", viewState.getNodes().get(0).getHeaderColor());
+        assertEquals("#ffffff", viewState.getNodes().get(0).getBodyColor());
+        assertEquals("#8a7be8", viewState.getNodes().get(0).getBorderColor());
+        assertEquals(original.getClasses().get(0).getName(),
+                serializer.deserializeCanonical(entity.getCanonicalModelJson()).getClasses().get(0).getName());
+        assertEquals(1, entity.getVersion());
     }
 
     @Test

@@ -1,4 +1,4 @@
-package com.sw1.umltool.features.diagram.model.view;
+package com.sw1.umltool.features.diagram.operation.payload;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,17 +9,9 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class NodeViewState {
+public class UpdateClassStylePayload {
 
     private String classId;
-
-    private double x;
-
-    private double y;
-
-    private double width;
-
-    private double height;
 
     private String headerColor;
 

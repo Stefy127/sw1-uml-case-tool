@@ -21,6 +21,7 @@ import com.sw1.umltool.features.diagram.operation.payload.SetClassAbstractPayloa
 import com.sw1.umltool.features.diagram.operation.payload.UpdateAttributePayload;
 import com.sw1.umltool.features.diagram.operation.payload.UpdateMethodPayload;
 import com.sw1.umltool.features.diagram.operation.payload.UpdateParameterPayload;
+import com.sw1.umltool.features.diagram.operation.payload.UpdateClassStylePayload;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -59,6 +60,7 @@ public class DiagramOperationPayloadMapper {
             case CHANGE_NAVIGABILITY -> ChangeNavigabilityPayload.class;
             case MOVE_CLASS -> MoveClassPayload.class;
             case RESIZE_CLASS -> ResizeClassPayload.class;
+            case UPDATE_CLASS_STYLE -> UpdateClassStylePayload.class;
         };
         try {
             operation.setPayload(objectMapper.convertValue(operation.getPayload(), payloadType));

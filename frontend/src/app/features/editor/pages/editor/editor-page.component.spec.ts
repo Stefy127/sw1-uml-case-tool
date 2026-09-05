@@ -112,6 +112,92 @@ describe('EditorPageComponent', () => {
     expect(page.classDeleteError()).toContain('diagrama cambi');
   });
 
+  it('previews resize locally and sends one RESIZE_CLASS on release', async () => {
+    const current = diagramWithClass();
+    let executions = 0;
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure(
+      {
+        execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
+          executions++;
+          request = value;
+          return of({
+            newVersion: 8,
+            canonicalModel: current.canonicalModel,
+            viewState: {
+              ...current.viewState,
+              nodes: [{ ...current.viewState.nodes[0], width: 300, height: 220 }],
+            },
+          });
+        },
+      },
+      current,
+    );
+    const fixture = TestBed.createComponent(EditorPageComponent);
+    await fixture.whenStable();
+    const page = fixture.componentInstance;
+    const card = fixture.nativeElement.querySelector('.uml-class') as HTMLElement;
+    const item = page.renderedClasses()[0];
+    page.selectedClassId.set('c1');
+    page.onResizePointerDown(item, {
+      currentTarget: card,
+      stopPropagation: () => {},
+      pointerId: 2,
+      clientX: 300,
+      clientY: 250,
+    } as unknown as PointerEvent);
+    page.onCanvasPointerMove({
+      currentTarget: fixture.nativeElement.querySelector('.canvas'),
+      pointerId: 2,
+      clientX: 360,
+      clientY: 290,
+    } as unknown as PointerEvent);
+    expect(executions).toBe(0);
+    expect(page.renderedClasses()[0].width).toBe(300);
+    expect(page.renderedClasses()[0].height).toBe(220);
+    page.onCanvasPointerUp({ pointerId: 2 } as unknown as PointerEvent);
+    expect(executions).toBe(1);
+    expect(request?.operation.type).toBe('RESIZE_CLASS');
+    expect(request?.operation.baseVersion).toBe(7);
+    expect(request?.operation.payload).toEqual({ classId: 'c1', width: 300, height: 220 });
+    expect(page.diagram()?.version).toBe(8);
+  });
+
+  it('persists class appearance through viewState without changing canonicalModel', async () => {
+    const current = diagramWithClass();
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure(
+      {
+        execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
+          request = value;
+          return of({
+            newVersion: 8,
+            canonicalModel: current.canonicalModel,
+            viewState: {
+              ...current.viewState,
+              nodes: [{ ...current.viewState.nodes[0], headerColor: '#eee8ff' }],
+            },
+          });
+        },
+      },
+      current,
+    );
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectedClassId.set('c1');
+    page.changeClassStyle('headerColor', { target: { value: '#eee8ff' } } as unknown as Event);
+    expect(request?.operation.type).toBe('UPDATE_CLASS_STYLE');
+    expect(request?.operation.baseVersion).toBe(7);
+    expect(request?.operation.payload).toEqual({
+      classId: 'c1',
+      headerColor: '#eee8ff',
+      bodyColor: null,
+      borderColor: null,
+    });
+    expect(page.diagram()?.viewState.nodes[0].headerColor).toBe('#eee8ff');
+    expect(page.diagram()?.canonicalModel).toBe(current.canonicalModel);
+    expect(page.diagram()?.version).toBe(8);
+  });
+
   it('previews a selected class during drag and sends one MOVE_CLASS on release', async () => {
     const current = diagramWithClass();
     let executions = 0;

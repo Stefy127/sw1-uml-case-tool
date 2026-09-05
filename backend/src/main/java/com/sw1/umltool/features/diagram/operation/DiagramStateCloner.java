@@ -106,7 +106,8 @@ public class DiagramStateCloner {
     private NodeViewState cloneNode(NodeViewState node) {
         if (node == null) return null;
         return NodeViewState.builder().classId(node.getClassId()).x(node.getX()).y(node.getY())
-                .width(node.getWidth()).height(node.getHeight()).build();
+                .width(node.getWidth()).height(node.getHeight()).headerColor(node.getHeaderColor())
+                .bodyColor(node.getBodyColor()).borderColor(node.getBorderColor()).build();
     }
 
     private RelationViewState cloneRelationView(RelationViewState relation) {

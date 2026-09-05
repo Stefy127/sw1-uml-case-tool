@@ -63,8 +63,9 @@
           [style.top.px]="item.y"
           [style.width.px]="item.width"
           [style.min-height.px]="item.height"
+          [style.border-color]="item.borderColor || null"
         >
-          <header>
+          <header [style.background-color]="item.headerColor || null">
             @if (editingClassId() === item.umlClass.id) {
               <input
                 class="inline-name"
@@ -86,7 +87,7 @@
             <span>•••</span>
             <small>{{ isAbstract(item.umlClass) ? 'Abstracta' : 'Entidad' }}</small>
           </header>
-          <div class="uml-lines">
+          <div class="uml-lines" [style.background-color]="item.bodyColor || null">
             @if (item.umlClass.attributes.length === 0) {
               <span class="empty-line">Sin atributos</span>
             }
@@ -99,7 +100,7 @@
               </span>
             }
           </div>
-          <div class="uml-lines methods">
+          <div class="uml-lines methods" [style.background-color]="item.bodyColor || null">
             @if (item.umlClass.methods.length === 0) {
               <span class="empty-line">Sin métodos</span>
             }
@@ -109,6 +110,15 @@
               >
             }
           </div>
+          @if (activeTool() === 'SELECT' && selectedClassId() === item.umlClass.id) {
+            <button
+              class="resize-handle"
+              type="button"
+              aria-label="Cambiar tamaño de clase"
+              (pointerdown)="onResizePointerDown(item, $event)"
+              (click)="$event.stopPropagation()"
+            ></button>
+          }
         </article>
       }
     </main>
@@ -131,6 +141,49 @@
             <div class="selected-name">
               <span>◇</span><b>{{ selected.umlClass.name }}</b
               ><small>Clase UML</small>
+            </div>
+            <div class="class-appearance">
+              <div class="attributes-heading">
+                <span class="section-label">Apariencia</span>
+                <button
+                  class="add-attribute appearance-reset"
+                  type="button"
+                  [disabled]="styleSaving()"
+                  (click)="resetClassStyle()"
+                >
+                  Restablecer colores
+                </button>
+              </div>
+              <label class="appearance-row attribute-row">
+                <span>Cabecera</span>
+                <input
+                  type="color"
+                  [value]="classStyleColor(selectedNode()?.headerColor, '--color-class-header', '#eae7ff')"
+                  [disabled]="styleSaving()"
+                  (change)="changeClassStyle('headerColor', $event)"
+                />
+              </label>
+              <label class="appearance-row attribute-row">
+                <span>Cuerpo</span>
+                <input
+                  type="color"
+                  [value]="classStyleColor(selectedNode()?.bodyColor, '--color-surface', '#ffffff')"
+                  [disabled]="styleSaving()"
+                  (change)="changeClassStyle('bodyColor', $event)"
+                />
+              </label>
+              <label class="appearance-row attribute-row">
+                <span>Borde</span>
+                <input
+                  type="color"
+                  [value]="classStyleColor(selectedNode()?.borderColor, '--color-border', '#d8d2ee')"
+                  [disabled]="styleSaving()"
+                  (change)="changeClassStyle('borderColor', $event)"
+                />
+              </label>
+              @if (styleError()) {
+                <p class="attribute-error">{{ styleError() }}</p>
+              }
             </div>
             <div class="attributes-heading">
               <span class="section-label"

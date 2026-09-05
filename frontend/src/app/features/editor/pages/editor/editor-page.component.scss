@@ -133,9 +133,9 @@
   position: absolute;
   width: 235px;
   overflow: hidden;
-  border: 1px solid #d9d3f5;
+  border: 1px solid var(--color-border);
   border-radius: 14px;
-  background: #fff;
+  background: var(--color-surface);
   box-shadow: var(--shadow-sm);
   font-size: 12px;
   color: #72829e;
@@ -319,7 +319,6 @@
 }
 .history small {
   display: block;
-  margin-top: 6px;
   color: var(--color-text-muted);
 }
 .attributes-heading {
@@ -435,7 +434,6 @@
 }
 .attribute-row-actions {
   display: flex;
-  flex-shrink: 0;
   gap: 4px;
 }
 .pk,

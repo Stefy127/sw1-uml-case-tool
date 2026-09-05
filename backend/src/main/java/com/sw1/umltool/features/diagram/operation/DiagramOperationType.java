@@ -21,5 +21,6 @@ public enum DiagramOperationType {
     CHANGE_RELATION_ROLES,
     CHANGE_NAVIGABILITY,
     MOVE_CLASS,
-    RESIZE_CLASS
+    RESIZE_CLASS,
+    UPDATE_CLASS_STYLE
 }

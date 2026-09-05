@@ -21,6 +21,7 @@ import com.sw1.umltool.features.diagram.operation.payload.DeleteRelationPayload;
 import com.sw1.umltool.features.diagram.operation.payload.MoveClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.RenameClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.ResizeClassPayload;
+import com.sw1.umltool.features.diagram.operation.payload.UpdateClassStylePayload;
 import com.sw1.umltool.features.diagram.operation.payload.UpdateAttributePayload;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -171,6 +172,22 @@ class DiagramOperationApplierTest {
         NodeViewState node = viewState.getNodes().get(0);
         assertEquals(300, node.getWidth());
         assertEquals(150, node.getHeight());
+    }
+
+    @Test
+    void updateClassStyleChangesViewStateOnly() {
+        addClass("class-1", "Customer");
+        UmlClass umlClass = diagram.getClasses().get(0);
+
+        apply(DiagramOperationType.UPDATE_CLASS_STYLE, UpdateClassStylePayload.builder()
+                .classId("class-1").headerColor("#eee8ff").bodyColor("#ffffff")
+                .borderColor("#8a7be8").build());
+
+        NodeViewState node = viewState.getNodes().get(0);
+        assertEquals("#eee8ff", node.getHeaderColor());
+        assertEquals("#ffffff", node.getBodyColor());
+        assertEquals("#8a7be8", node.getBorderColor());
+        assertEquals("Customer", umlClass.getName());
     }
 
     @Test

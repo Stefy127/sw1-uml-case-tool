@@ -31,6 +31,7 @@ import com.sw1.umltool.features.diagram.operation.payload.SetClassAbstractPayloa
 import com.sw1.umltool.features.diagram.operation.payload.UpdateAttributePayload;
 import com.sw1.umltool.features.diagram.operation.payload.UpdateMethodPayload;
 import com.sw1.umltool.features.diagram.operation.payload.UpdateParameterPayload;
+import com.sw1.umltool.features.diagram.operation.payload.UpdateClassStylePayload;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -72,6 +73,7 @@ public class DiagramOperationApplier {
             case CHANGE_NAVIGABILITY -> changeNavigability(payload(operation, ChangeNavigabilityPayload.class), diagram);
             case MOVE_CLASS -> moveClass(payload(operation, MoveClassPayload.class), viewState);
             case RESIZE_CLASS -> resizeClass(payload(operation, ResizeClassPayload.class), viewState);
+            case UPDATE_CLASS_STYLE -> updateClassStyle(payload(operation, UpdateClassStylePayload.class), viewState);
         }
     }
 
@@ -234,6 +236,13 @@ public class DiagramOperationApplier {
         NodeViewState node = findNodeViewState(viewState, payload.getClassId());
         node.setWidth(payload.getWidth());
         node.setHeight(payload.getHeight());
+    }
+
+    private void updateClassStyle(UpdateClassStylePayload payload, DiagramViewState viewState) {
+        NodeViewState node = findNodeViewState(viewState, payload.getClassId());
+        node.setHeaderColor(payload.getHeaderColor());
+        node.setBodyColor(payload.getBodyColor());
+        node.setBorderColor(payload.getBorderColor());
     }
 
     private UmlClass findClass(UmlDiagram diagram, String id) {

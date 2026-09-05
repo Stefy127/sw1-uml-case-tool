@@ -19,7 +19,8 @@ export type DiagramOperationType =
   | 'CHANGE_RELATION_ROLES'
   | 'CHANGE_NAVIGABILITY'
   | 'MOVE_CLASS'
-  | 'RESIZE_CLASS';
+  | 'RESIZE_CLASS'
+  | 'UPDATE_CLASS_STYLE';
 
 export interface CreateClassPayload {
   classId: string;
@@ -44,6 +45,19 @@ export interface MoveClassPayload {
   classId: string;
   x: number;
   y: number;
+}
+
+export interface ResizeClassPayload {
+  classId: string;
+  width: number;
+  height: number;
+}
+
+export interface UpdateClassStylePayload {
+  classId: string;
+  headerColor: string | null;
+  bodyColor: string | null;
+  borderColor: string | null;
 }
 
 export interface AddAttributePayload {
@@ -118,6 +132,8 @@ export interface DiagramOperation {
     | DeleteClassPayload
     | RenameClassPayload
     | MoveClassPayload
+    | ResizeClassPayload
+    | UpdateClassStylePayload
     | AddAttributePayload
     | UpdateAttributePayload
     | RemoveAttributePayload
