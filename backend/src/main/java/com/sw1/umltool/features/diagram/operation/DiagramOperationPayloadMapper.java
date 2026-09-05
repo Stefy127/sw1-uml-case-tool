@@ -8,9 +8,12 @@ import com.sw1.umltool.features.diagram.operation.payload.ChangeNavigabilityPayl
 import com.sw1.umltool.features.diagram.operation.payload.ChangeRelationRolesPayload;
 import com.sw1.umltool.features.diagram.operation.payload.ChangeRelationTypePayload;
 import com.sw1.umltool.features.diagram.operation.payload.CreateClassPayload;
+import com.sw1.umltool.features.diagram.operation.payload.CreateAssociationClassPayload;
+import com.sw1.umltool.features.diagram.operation.payload.CreateAssociationClassLinkPayload;
 import com.sw1.umltool.features.diagram.operation.payload.CreateRelationPayload;
 import com.sw1.umltool.features.diagram.operation.payload.DeleteClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.DeleteRelationPayload;
+import com.sw1.umltool.features.diagram.operation.payload.DeleteAssociationClassLinkPayload;
 import com.sw1.umltool.features.diagram.operation.payload.MoveClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.RemoveAttributePayload;
 import com.sw1.umltool.features.diagram.operation.payload.RemoveMethodPayload;
@@ -54,6 +57,9 @@ public class DiagramOperationPayloadMapper {
             case REMOVE_PARAMETER -> RemoveParameterPayload.class;
             case CREATE_RELATION -> CreateRelationPayload.class;
             case DELETE_RELATION -> DeleteRelationPayload.class;
+            case CREATE_ASSOCIATION_CLASS -> CreateAssociationClassPayload.class;
+            case CREATE_ASSOCIATION_CLASS_LINK -> CreateAssociationClassLinkPayload.class;
+            case DELETE_ASSOCIATION_CLASS_LINK -> DeleteAssociationClassLinkPayload.class;
             case CHANGE_RELATION_TYPE -> ChangeRelationTypePayload.class;
             case CHANGE_MULTIPLICITY -> ChangeMultiplicityPayload.class;
             case CHANGE_RELATION_ROLES -> ChangeRelationRolesPayload.class;

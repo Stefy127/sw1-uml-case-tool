@@ -1,6 +1,7 @@
 package com.sw1.umltool.features.diagram.operation;
 
 import com.sw1.umltool.features.diagram.model.canonical.Multiplicity;
+import com.sw1.umltool.features.diagram.model.canonical.AssociationClassLink;
 import com.sw1.umltool.features.diagram.model.canonical.UmlAttribute;
 import com.sw1.umltool.features.diagram.model.canonical.UmlClass;
 import com.sw1.umltool.features.diagram.model.canonical.UmlDiagram;
@@ -27,6 +28,9 @@ public class DiagramStateCloner {
                 .map(this::cloneClass).toList();
         List<UmlRelation> relations = diagram.getRelations() == null ? null : diagram.getRelations().stream()
                 .map(this::cloneRelation).toList();
+        List<AssociationClassLink> associationClassLinks = diagram.getAssociationClassLinks() == null
+                ? new ArrayList<>()
+                : diagram.getAssociationClassLinks().stream().map(this::cloneAssociationClassLink).toList();
 
         return UmlDiagram.builder()
                 .id(diagram.getId())
@@ -34,6 +38,7 @@ public class DiagramStateCloner {
                 .version(diagram.getVersion())
                 .classes(classes == null ? null : new ArrayList<>(classes))
                 .relations(relations == null ? null : new ArrayList<>(relations))
+                .associationClassLinks(new ArrayList<>(associationClassLinks))
                 .build();
     }
 
@@ -101,6 +106,12 @@ public class DiagramStateCloner {
     private Multiplicity cloneMultiplicity(Multiplicity multiplicity) {
         if (multiplicity == null) return null;
         return Multiplicity.builder().lower(multiplicity.getLower()).upper(multiplicity.getUpper()).build();
+    }
+
+    private AssociationClassLink cloneAssociationClassLink(AssociationClassLink link) {
+        if (link == null) return null;
+        return AssociationClassLink.builder().id(link.getId()).relationId(link.getRelationId())
+                .classId(link.getClassId()).build();
     }
 
     private NodeViewState cloneNode(NodeViewState node) {

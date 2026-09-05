@@ -265,6 +265,33 @@ h3 {
   stroke-width: 3;
 }
 
+.relation-line.dependency {
+  stroke-dasharray: 7 5;
+}
+
+.relation-line marker path {
+  fill: var(--color-primary);
+  stroke: var(--color-primary);
+}
+
+#aggregation-diamond path,
+#inheritance-triangle path {
+  fill: var(--color-surface);
+  stroke: var(--color-primary);
+  stroke-width: 1.2;
+}
+
+#composition-diamond .filled-marker {
+  fill: var(--color-primary);
+  stroke: var(--color-primary);
+}
+
+#dependency-arrow path {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 1.4;
+}
+
 .relation-hit {
   fill: none;
   stroke: transparent;
@@ -286,6 +313,14 @@ h3 {
   fill: var(--color-primary);
   font-size: 10px;
   font-style: italic;
+  pointer-events: none;
+}
+
+.association-class-link {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
   pointer-events: none;
 }
 
@@ -359,6 +394,32 @@ h3 {
 .relation-save {
   justify-self: end;
   padding: 8px 11px;
+  font-size: 11px;
+}
+
+.association-class-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+}
+
+.association-class-panel > b {
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.association-class-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.association-class-actions .btn,
+.association-class-panel > .btn {
+  padding: 8px 10px;
   font-size: 11px;
 }
 

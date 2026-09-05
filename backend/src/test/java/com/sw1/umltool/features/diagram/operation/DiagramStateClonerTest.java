@@ -73,4 +73,14 @@ class DiagramStateClonerTest {
         copy.getNodes().get(0).setX(99);
         assertEquals(10, original.getNodes().get(0).getX());
     }
+
+    @Test
+    void cloneLegacyDiagramTreatsNullAssociationClassLinksAsEmpty() {
+        UmlDiagram legacy = UmlDiagram.builder().id("legacy").name("Legacy").build();
+        legacy.setAssociationClassLinks(null);
+
+        UmlDiagram copy = cloner.cloneDiagram(legacy);
+
+        assertEquals(java.util.List.of(), copy.getAssociationClassLinks());
+    }
 }

@@ -6,6 +6,8 @@ import com.sw1.umltool.features.diagram.model.canonical.UmlDiagram;
 import com.sw1.umltool.features.diagram.model.canonical.UmlMethod;
 import com.sw1.umltool.features.diagram.model.canonical.UmlParameter;
 import com.sw1.umltool.features.diagram.model.canonical.UmlRelation;
+import com.sw1.umltool.features.diagram.model.canonical.AssociationClassLink;
+import com.sw1.umltool.features.diagram.model.canonical.enums.RelationType;
 import com.sw1.umltool.features.diagram.model.canonical.enums.Visibility;
 import com.sw1.umltool.features.diagram.model.view.DiagramViewState;
 import com.sw1.umltool.features.diagram.model.view.NodeViewState;
@@ -16,6 +18,8 @@ import com.sw1.umltool.features.diagram.operation.payload.AddParameterPayload;
 import com.sw1.umltool.features.diagram.operation.payload.ChangeRelationTypePayload;
 import com.sw1.umltool.features.diagram.operation.payload.CreateClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.CreateRelationPayload;
+import com.sw1.umltool.features.diagram.operation.payload.CreateAssociationClassPayload;
+import com.sw1.umltool.features.diagram.operation.payload.DeleteAssociationClassLinkPayload;
 import com.sw1.umltool.features.diagram.operation.payload.DeleteClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.DeleteRelationPayload;
 import com.sw1.umltool.features.diagram.operation.payload.MoveClassPayload;
@@ -161,6 +165,52 @@ class DiagramOperationApplierTest {
 
         assertTrue(diagram.getRelations().isEmpty());
         assertTrue(viewState.getRelations().isEmpty());
+    }
+
+    @Test
+    void createsAssociationClassAndLinkAtomicallyForRecursiveRelation() {
+        addClass("class-1", "Employee");
+        UmlRelation relation = UmlRelation.builder().id("relation-1").sourceClassId("class-1")
+                .targetClassId("class-1").type(RelationType.ASSOCIATION).build();
+        diagram.getRelations().add(relation);
+
+        apply(DiagramOperationType.CREATE_ASSOCIATION_CLASS, CreateAssociationClassPayload.builder()
+                .linkId("link-1").relationId("relation-1").classId("class-2").name("Supervision")
+                .width(240).height(180).build());
+
+        assertEquals("Supervision", diagram.getClasses().get(1).getName());
+        assertEquals("class-2", viewState.getNodes().get(1).getClassId());
+        assertEquals(new AssociationClassLink("link-1", "relation-1", "class-2"),
+                diagram.getAssociationClassLinks().get(0));
+    }
+
+    @Test
+    void unlinkingAssociationClassKeepsTheClass() {
+        addClass("class-1", "Employee");
+        addClass("class-2", "Supervision");
+        diagram.getRelations().add(UmlRelation.builder().id("relation-1").sourceClassId("class-1")
+                .targetClassId("class-1").type(RelationType.ASSOCIATION).build());
+        diagram.getAssociationClassLinks().add(new AssociationClassLink("link-1", "relation-1", "class-2"));
+
+        apply(DiagramOperationType.DELETE_ASSOCIATION_CLASS_LINK,
+                DeleteAssociationClassLinkPayload.builder().linkId("link-1").build());
+
+        assertEquals(2, diagram.getClasses().size());
+        assertTrue(diagram.getAssociationClassLinks().isEmpty());
+    }
+
+    @Test
+    void deletingRelationCleansAssociationClassLinkWithoutDeletingClass() {
+        addClass("class-1", "Employee");
+        addClass("class-2", "Supervision");
+        diagram.getRelations().add(UmlRelation.builder().id("relation-1").sourceClassId("class-1")
+                .targetClassId("class-1").type(RelationType.ASSOCIATION).build());
+        diagram.getAssociationClassLinks().add(new AssociationClassLink("link-1", "relation-1", "class-2"));
+
+        apply(DiagramOperationType.DELETE_RELATION, DeleteRelationPayload.builder().relationId("relation-1").build());
+
+        assertEquals(2, diagram.getClasses().size());
+        assertTrue(diagram.getAssociationClassLinks().isEmpty());
     }
 
     @Test

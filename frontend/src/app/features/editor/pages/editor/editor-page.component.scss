@@ -273,7 +273,8 @@
   font-weight: 600;
 }
 .inspect-content input,
-.inspect-content textarea {
+.inspect-content textarea,
+.relation-select {
   width: 100%;
   padding: 12px;
   border: 1px solid var(--color-border);
@@ -375,7 +376,7 @@
   font-size: 12px;
 }
 .attribute-form input:not([type='checkbox']):focus,
-.attribute-form select:focus {
+select:focus {
   outline: 2px solid var(--color-primary-soft);
   border-color: var(--color-primary);
 }

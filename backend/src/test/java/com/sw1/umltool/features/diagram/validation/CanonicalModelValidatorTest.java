@@ -1,6 +1,7 @@
 package com.sw1.umltool.features.diagram.validation;
 
 import com.sw1.umltool.features.diagram.model.canonical.Multiplicity;
+import com.sw1.umltool.features.diagram.model.canonical.AssociationClassLink;
 import com.sw1.umltool.features.diagram.model.canonical.UmlAttribute;
 import com.sw1.umltool.features.diagram.model.canonical.UmlClass;
 import com.sw1.umltool.features.diagram.model.canonical.UmlDiagram;
@@ -280,5 +281,25 @@ class CanonicalModelValidatorTest {
         ValidationResult result = validator.validate(diagram);
 
         assertTrue(result.isValid());
+    }
+
+    @Test
+    void shouldRejectAssociationClassLinkToMissingClass() {
+        UmlClass alumno = UmlClass.builder().id("c1").name("Alumno").build();
+        UmlClass materia = UmlClass.builder().id("c2").name("Materia").build();
+        UmlRelation relation = UmlRelation.builder().id("r1").sourceClassId("c1").targetClassId("c2")
+                .type(RelationType.ASSOCIATION)
+                .sourceMultiplicity(new Multiplicity("1", "1"))
+                .targetMultiplicity(new Multiplicity("0", "*"))
+                .build();
+        UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Inscripciones")
+                .classes(List.of(alumno, materia)).relations(List.of(relation))
+                .associationClassLinks(List.of(new AssociationClassLink("l1", "r1", "missing"))).build();
+
+        ValidationResult result = validator.validate(diagram);
+
+        assertFalse(result.isValid());
+        assertTrue(result.getErrors().stream().anyMatch(error ->
+                "INVALID_ASSOCIATION_CLASS_CLASS".equals(error.getCode())));
     }
 }

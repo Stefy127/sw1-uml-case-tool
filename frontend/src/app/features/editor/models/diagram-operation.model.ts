@@ -14,6 +14,9 @@ export type DiagramOperationType =
   | 'REMOVE_PARAMETER'
   | 'CREATE_RELATION'
   | 'DELETE_RELATION'
+  | 'CREATE_ASSOCIATION_CLASS'
+  | 'CREATE_ASSOCIATION_CLASS_LINK'
+  | 'DELETE_ASSOCIATION_CLASS_LINK'
   | 'CHANGE_RELATION_TYPE'
   | 'CHANGE_MULTIPLICITY'
   | 'CHANGE_RELATION_ROLES'
@@ -66,6 +69,33 @@ export interface CreateRelationPayload {
 
 export interface DeleteRelationPayload {
   relationId: string;
+}
+
+export interface CreateAssociationClassPayload {
+  linkId: string;
+  relationId: string;
+  classId: string;
+  name: string;
+  isAbstract: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface CreateAssociationClassLinkPayload {
+  linkId: string;
+  relationId: string;
+  classId: string;
+}
+
+export interface DeleteAssociationClassLinkPayload {
+  linkId: string;
+}
+
+export interface ChangeRelationTypePayload {
+  relationId: string;
+  type: string;
 }
 
 export interface ChangeMultiplicityPayload {
@@ -162,6 +192,10 @@ export interface DiagramOperation {
     | UpdateClassStylePayload
     | CreateRelationPayload
     | DeleteRelationPayload
+    | CreateAssociationClassPayload
+    | CreateAssociationClassLinkPayload
+    | DeleteAssociationClassLinkPayload
+    | ChangeRelationTypePayload
     | ChangeMultiplicityPayload
     | ChangeRelationRolesPayload
     | ChangeNavigabilityPayload

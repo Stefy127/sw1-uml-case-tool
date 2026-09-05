@@ -18,6 +18,7 @@ export interface UmlDiagram {
   version: number;
   classes: UmlClass[];
   relations: UmlRelation[];
+  associationClassLinks?: AssociationClassLink[];
 }
 
 export interface UmlClass {
@@ -70,6 +71,12 @@ export interface UmlRelation {
   targetRole: string | null;
   sourceNavigable: boolean;
   targetNavigable: boolean;
+}
+
+export interface AssociationClassLink {
+  id: string;
+  relationId: string;
+  classId: string;
 }
 
 export interface Multiplicity {

@@ -12,6 +12,11 @@ import com.sw1.umltool.features.diagram.model.canonical.enums.RelationType;
 import com.sw1.umltool.features.diagram.model.canonical.enums.Visibility;
 import com.sw1.umltool.features.diagram.model.view.DiagramViewState;
 import com.sw1.umltool.features.diagram.model.view.NodeViewState;
+import com.sw1.umltool.features.diagram.operation.DiagramOperation;
+import com.sw1.umltool.features.diagram.operation.DiagramOperationApplier;
+import com.sw1.umltool.features.diagram.operation.DiagramOperationType;
+import com.sw1.umltool.features.diagram.operation.payload.DeleteClassPayload;
+import com.sw1.umltool.features.diagram.operation.payload.DeleteRelationPayload;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -73,5 +78,72 @@ class DiagramStateSerializerTest {
     void invalidJsonThrowsDiagramSerializationException() {
         assertThrows(DiagramSerializationException.class,
                 () -> serializer.deserializeCanonical("{invalid-json"));
+    }
+
+    @Test
+    void legacyCanonicalJsonNormalizesAssociationClassLinksAndSupportsDeleteClass() {
+        String legacyJson = """
+                {
+                  "id":"diagram-legacy",
+                  "name":"Legacy",
+                  "version":34,
+                  "classes":[{"id":"class-1","name":"Cliente"}],
+                  "relations":[]
+                }
+                """;
+
+        UmlDiagram legacy = serializer.deserializeCanonical(legacyJson);
+
+        assertEquals(java.util.List.of(), legacy.getAssociationClassLinks());
+
+        DiagramViewState viewState = serializer.deserializeViewState("""
+                {
+                  "diagramId":"diagram-legacy",
+                  "nodes":[{"classId":"class-1","x":0,"y":0,"width":240,"height":180}],
+                  "relations":[]
+                }
+                """);
+        new DiagramOperationApplier().apply(
+                DiagramOperation.builder().type(DiagramOperationType.DELETE_CLASS)
+                        .payload(DeleteClassPayload.builder().classId("class-1").build()).build(),
+                legacy, viewState);
+
+        assertEquals(34, legacy.getVersion());
+        assertEquals(0, legacy.getClasses().size());
+        assertEquals(java.util.List.of(), legacy.getAssociationClassLinks());
+    }
+
+    @Test
+    void legacyCanonicalJsonSupportsDeleteRelationWithoutAssociationClassLinks() {
+        UmlDiagram legacy = serializer.deserializeCanonical("""
+                {
+                  "id":"diagram-legacy",
+                  "name":"Legacy",
+                  "version":34,
+                  "classes":[
+                    {"id":"class-1","name":"Cliente"},
+                    {"id":"class-2","name":"Pedido"}
+                  ],
+                  "relations":[
+                    {"id":"relation-1","sourceClassId":"class-1","targetClassId":"class-2","type":"ASSOCIATION"}
+                  ]
+                }
+                """);
+        DiagramViewState viewState = serializer.deserializeViewState("""
+                {
+                  "diagramId":"diagram-legacy",
+                  "nodes":[],
+                  "relations":[{"relationId":"relation-1"}]
+                }
+                """);
+
+        new DiagramOperationApplier().apply(
+                DiagramOperation.builder().type(DiagramOperationType.DELETE_RELATION)
+                        .payload(DeleteRelationPayload.builder().relationId("relation-1").build()).build(),
+                legacy, viewState);
+
+        assertEquals(0, legacy.getRelations().size());
+        assertEquals(0, viewState.getRelations().size());
+        assertEquals(java.util.List.of(), legacy.getAssociationClassLinks());
     }
 }

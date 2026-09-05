@@ -7,6 +7,7 @@ import {
   ChangeMultiplicityPayload,
   ChangeNavigabilityPayload,
   ChangeRelationRolesPayload,
+  ChangeRelationTypePayload,
 } from '../../models/diagram-operation.model';
 import {
   DiagramDetail,
@@ -16,11 +17,18 @@ import {
   UmlMethod,
   UmlParameter,
   UmlRelation,
+  AssociationClassLink,
 } from '../../models/diagram.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
 import { DiagramService } from '../../services/diagram.service';
 
 type EditorTool = 'SELECT' | 'CLASS' | 'RELATION';
+type RelationType =
+  | 'ASSOCIATION'
+  | 'AGGREGATION'
+  | 'COMPOSITION'
+  | 'INHERITANCE'
+  | 'DEPENDENCY';
 type Visibility = 'PUBLIC' | 'PRIVATE' | 'PROTECTED' | 'PACKAGE';
 
 interface AttributeDraft {
@@ -99,6 +107,11 @@ interface RenderedRelation {
   targetRoleY: number;
 }
 
+interface RenderedAssociationClassLink {
+  link: AssociationClassLink;
+  path: string;
+}
+
 interface RelationMultiplicityDraft {
   source: Multiplicity;
   target: Multiplicity;
@@ -110,6 +123,7 @@ interface RelationRolesDraft {
 }
 
 type RelationPropertyOperation =
+  | { type: 'CHANGE_RELATION_TYPE'; payload: ChangeRelationTypePayload }
   | { type: 'CHANGE_MULTIPLICITY'; payload: ChangeMultiplicityPayload }
   | { type: 'CHANGE_RELATION_ROLES'; payload: ChangeRelationRolesPayload }
   | { type: 'CHANGE_NAVIGABILITY'; payload: ChangeNavigabilityPayload };
@@ -130,6 +144,7 @@ export class EditorPageComponent {
   readonly loading = signal(true);
   readonly error = signal('');
   readonly activeTool = signal<EditorTool>('SELECT');
+  readonly relationCreationType = signal<RelationType>('ASSOCIATION');
   readonly selectedClassId = signal<string | null>(null);
   readonly selectedRelationId = signal<string | null>(null);
   readonly relationSourceClassId = signal<string | null>(null);
@@ -140,6 +155,8 @@ export class EditorPageComponent {
   readonly relationRolesDraft = signal<RelationRolesDraft | null>(null);
   readonly relationNavigabilityDraft = signal({ source: false, target: false });
   readonly relationPropertySaving = signal(false);
+  readonly associationClassSaving = signal(false);
+  readonly associationClassError = signal('');
   readonly editingClassId = signal<string | null>(null);
   readonly editingName = signal('');
   readonly renaming = signal(false);
@@ -176,6 +193,12 @@ export class EditorPageComponent {
         currentDiagram.canonicalModel.classes.find((item) => item.id === relation.targetClassId)
           ?.name ?? relation.targetClassId,
     };
+  });
+  readonly selectedAssociationClassLink = computed(() => {
+    const relationId = this.selectedRelationId();
+    return this.diagram()?.canonicalModel.associationClassLinks?.find(
+      (link) => link.relationId === relationId,
+    ) ?? null;
   });
   readonly editingMethod = computed(() => {
     const umlClass = this.selectedClass()?.umlClass;
@@ -227,9 +250,43 @@ export class EditorPageComponent {
       .map((relation) => this.renderRelation(relation, classes))
       .filter((item): item is RenderedRelation => item !== null);
   });
+  readonly renderedAssociationClassLinks = computed<RenderedAssociationClassLink[]>(() => {
+    const currentDiagram = this.diagram();
+    if (!currentDiagram) return [];
+    const classes = this.renderedClasses();
+    return (currentDiagram.canonicalModel.associationClassLinks ?? [])
+      .map((link) => {
+        const associationClass = classes.find((item) => item.umlClass.id === link.classId);
+        const relation = currentDiagram.canonicalModel.relations.find(
+          (item) => item.id === link.relationId,
+        );
+        if (!associationClass || !relation) return null;
+        const midpoint = this.relationMidpoint(relation, classes);
+        return {
+          link,
+          path: `M ${associationClass.x + associationClass.width / 2} ${associationClass.y} L ${midpoint.x} ${midpoint.y}`,
+        };
+      })
+      .filter((item): item is RenderedAssociationClassLink => item !== null);
+  });
   tab = 'Propiedades';
-  tools = ['⌁', '□', '⌁', '◇', '◈', '↗'];
-  toolLabels = ['Seleccionar', 'Clase', 'Relación', 'Agregación', 'Composición', 'Herencia'];
+  tools = ['⌁', '□', '⌁', '◇', '◈', '↗', '⇢'];
+  toolLabels = [
+    'Seleccionar',
+    'Clase',
+    'Relación',
+    'Agregación',
+    'Composición',
+    'Herencia',
+    'Dependencia',
+  ];
+  readonly relationTypeOptions: Array<{ value: RelationType; label: string }> = [
+    { value: 'ASSOCIATION', label: 'Asociación' },
+    { value: 'AGGREGATION', label: 'Agregación' },
+    { value: 'COMPOSITION', label: 'Composición' },
+    { value: 'INHERITANCE', label: 'Herencia' },
+    { value: 'DEPENDENCY', label: 'Dependencia' },
+  ];
 
   constructor() {
     if (!this.diagramId) {
@@ -255,6 +312,34 @@ export class EditorPageComponent {
     if (tool !== 'RELATION') this.relationError.set('');
   }
 
+  setRelationTool(type: RelationType): void {
+    this.relationCreationType.set(type);
+    this.setActiveTool('RELATION');
+  }
+
+  toolbarRelationType(index: number): RelationType | null {
+    return ({
+      2: 'ASSOCIATION',
+      3: 'AGGREGATION',
+      4: 'COMPOSITION',
+      5: 'INHERITANCE',
+      6: 'DEPENDENCY',
+    } as Record<number, RelationType>)[index] ?? null;
+  }
+
+  activateToolbarTool(index: number): void {
+    if (index === 0) {
+      this.setActiveTool('SELECT');
+      return;
+    }
+    if (index === 1) {
+      this.setActiveTool('CLASS');
+      return;
+    }
+    const relationType = this.toolbarRelationType(index);
+    if (relationType) this.setRelationTool(relationType);
+  }
+
   onEditorKeydown(event: KeyboardEvent): void {
     if (event.key === 'Escape' && this.activeTool() === 'RELATION') {
       this.setActiveTool('SELECT');
@@ -267,7 +352,7 @@ export class EditorPageComponent {
     const toolbar = button?.closest('.toolbar');
     if (!button || !toolbar) return;
     const buttons = Array.from(toolbar.querySelectorAll('button'));
-    if (buttons.indexOf(button) === 8) {
+    if (buttons.indexOf(button) === 9) {
       if (this.selectedRelationId()) {
         this.removeSelectedRelation();
       } else {
@@ -449,6 +534,119 @@ export class EditorPageComponent {
     this.syncRelationDrafts(relation);
   }
 
+  changeSelectedRelationType(type: RelationType): void {
+    const relation = this.selectedRelation()?.relation;
+    const currentDiagram = this.diagram();
+    if (!relation || !currentDiagram || relation.type === type || this.relationPropertySaving()) return;
+    this.executeRelationProperty({
+      type: 'CHANGE_RELATION_TYPE',
+      payload: { relationId: relation.id, type },
+    });
+  }
+
+  relationTypeLabel(type: string): string {
+    return this.relationTypeOptions.find((option) => option.value === type)?.label ?? type;
+  }
+
+  usesMultiplicity(type: string): boolean {
+    return type === 'ASSOCIATION' || type === 'AGGREGATION' || type === 'COMPOSITION';
+  }
+
+  usesRoles(type: string): boolean {
+    return this.usesMultiplicity(type);
+  }
+
+  createAssociationClass(): void {
+    const currentDiagram = this.diagram();
+    const relation = this.selectedRelation()?.relation;
+    if (!currentDiagram || !relation || relation.type !== 'ASSOCIATION' || this.associationClassSaving()) return;
+    const midpoint = this.relationMidpoint(relation, this.renderedClasses());
+    const classId = crypto.randomUUID();
+    const linkId = crypto.randomUUID();
+    this.associationClassSaving.set(true);
+    this.associationClassError.set('');
+    this.operationService.execute(this.diagramId, {
+      operation: {
+        operationId: crypto.randomUUID(),
+        diagramId: this.diagramId,
+        userId: DEV_USER_ID,
+        baseVersion: currentDiagram.version,
+        type: 'CREATE_ASSOCIATION_CLASS',
+        payload: {
+          linkId,
+          relationId: relation.id,
+          classId,
+          name: this.nextAssociationClassName(currentDiagram),
+          isAbstract: false,
+          x: Math.max(0, midpoint.x - 120),
+          y: Math.max(0, midpoint.y + 50),
+          width: 240,
+          height: 180,
+        },
+      },
+    }).subscribe({
+      next: (response) => {
+        this.applyOperationResponse(response);
+        this.associationClassSaving.set(false);
+      },
+      error: (error: unknown) => {
+        this.associationClassSaving.set(false);
+        this.associationClassError.set(this.operationError(error, 'No se pudo crear la clase de asociación.'));
+        console.error('No se pudo crear la clase de asociación.', error instanceof HttpErrorResponse ? error.status : 'Error HTTP');
+      },
+    });
+  }
+
+  goToAssociationClass(): void {
+    const link = this.selectedAssociationClassLink();
+    if (!link) return;
+    this.selectedClassId.set(link.classId);
+    this.selectedRelationId.set(null);
+  }
+
+  unlinkAssociationClass(): void {
+    const currentDiagram = this.diagram();
+    const link = this.selectedAssociationClassLink();
+    if (!currentDiagram || !link || this.associationClassSaving()) return;
+    this.associationClassSaving.set(true);
+    this.associationClassError.set('');
+    this.operationService.execute(this.diagramId, {
+      operation: {
+        operationId: crypto.randomUUID(),
+        diagramId: this.diagramId,
+        userId: DEV_USER_ID,
+        baseVersion: currentDiagram.version,
+        type: 'DELETE_ASSOCIATION_CLASS_LINK',
+        payload: { linkId: link.id },
+      },
+    }).subscribe({
+      next: (response) => {
+        this.applyOperationResponse(response);
+        this.associationClassSaving.set(false);
+      },
+      error: (error: unknown) => {
+        this.associationClassSaving.set(false);
+        this.associationClassError.set(this.operationError(error, 'No se pudo desvincular la clase de asociación.'));
+      },
+    });
+  }
+
+  relationMarkerStart(relation: UmlRelation): string | null {
+    if (relation.type === 'AGGREGATION') return 'url(#aggregation-diamond)';
+    if (relation.type === 'COMPOSITION') return 'url(#composition-diamond)';
+    if (relation.type === 'ASSOCIATION' && relation.targetNavigable) return 'url(#relation-arrow)';
+    return null;
+  }
+
+  relationMarkerEnd(relation: UmlRelation): string | null {
+    if (relation.type === 'INHERITANCE') return 'url(#inheritance-triangle)';
+    if (relation.type === 'DEPENDENCY') return 'url(#dependency-arrow)';
+    if (relation.type !== 'INHERITANCE' && relation.type !== 'DEPENDENCY' && relation.sourceNavigable) {
+      return 'url(#relation-arrow)';
+    }
+    return null;
+  }
+
   updateRelationMultiplicityDraft(side: 'source' | 'target', value: string): void {
     const draft = this.relationMultiplicityDraft();
     if (!draft) return;
@@ -600,7 +798,7 @@ export class EditorPageComponent {
       id: relationId,
       sourceClassId,
       targetClassId,
-      type: 'ASSOCIATION',
+      type: this.relationCreationType(),
       sourceMultiplicity: { lower: '1', upper: '1' },
       targetMultiplicity: { lower: '1', upper: '1' },
       sourceRole: null,
@@ -1648,6 +1846,25 @@ export class EditorPageComponent {
     };
   }
 
+  private relationMidpoint(relation: UmlRelation, classes: RenderedUmlClass[]): { x: number; y: number } {
+    const source = classes.find((item) => item.umlClass.id === relation.sourceClassId);
+    const target = classes.find((item) => item.umlClass.id === relation.targetClassId);
+    if (!source || !target) return { x: 0, y: 0 };
+    if (source.umlClass.id === target.umlClass.id) {
+      return { x: source.x + source.width + 72, y: source.y + source.height / 2 };
+    }
+    const sourceCenter = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+    const targetCenter = { x: target.x + target.width / 2, y: target.y + target.height / 2 };
+    const horizontal = Math.abs(targetCenter.x - sourceCenter.x) >= Math.abs(targetCenter.y - sourceCenter.y);
+    const sourcePoint = horizontal
+      ? { x: targetCenter.x >= sourceCenter.x ? source.x + source.width : source.x, y: sourceCenter.y }
+      : { x: sourceCenter.x, y: targetCenter.y >= sourceCenter.y ? source.y + source.height : source.y };
+    const targetPoint = horizontal
+      ? { x: targetCenter.x >= sourceCenter.x ? target.x : target.x + target.width, y: targetCenter.y }
+      : { x: targetCenter.x, y: targetCenter.y >= sourceCenter.y ? target.y : target.y + target.height };
+    return { x: (sourcePoint.x + targetPoint.x) / 2, y: (sourcePoint.y + targetPoint.y) / 2 };
+  }
+
   multiplicityLabel(multiplicity: { lower: string; upper: string } | null | undefined): string {
     if (!multiplicity) return '';
     return multiplicity.lower === multiplicity.upper
@@ -1660,6 +1877,13 @@ export class EditorPageComponent {
       this.diagram()?.canonicalModel.classes.find((umlClass) => umlClass.id === classId)?.name ??
       classId
     );
+  }
+
+  private nextAssociationClassName(diagram: DiagramDetail): string {
+    const names = new Set(diagram.canonicalModel.classes.map((umlClass) => umlClass.name.toLowerCase()));
+    let index = 1;
+    while (names.has(`claseasociacion${index}`)) index++;
+    return `ClaseAsociacion${index}`;
   }
 
   isAbstract(umlClass: UmlClass): boolean {

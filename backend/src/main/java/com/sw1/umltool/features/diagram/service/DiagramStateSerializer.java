@@ -7,6 +7,8 @@ import com.sw1.umltool.features.diagram.model.canonical.UmlDiagram;
 import com.sw1.umltool.features.diagram.model.view.DiagramViewState;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+
 @Service
 public class DiagramStateSerializer {
 
@@ -28,7 +30,15 @@ public class DiagramStateSerializer {
 
     public UmlDiagram deserializeCanonical(String json) {
         try {
-            return objectMapper.readValue(json, UmlDiagram.class);
+            UmlDiagram diagram = objectMapper.readValue(json, UmlDiagram.class);
+            if (diagram.getClasses() == null) diagram.setClasses(new ArrayList<>());
+            else diagram.setClasses(new ArrayList<>(diagram.getClasses()));
+            if (diagram.getRelations() == null) diagram.setRelations(new ArrayList<>());
+            else diagram.setRelations(new ArrayList<>(diagram.getRelations()));
+            if (diagram.getAssociationClassLinks() == null) {
+                diagram.setAssociationClassLinks(new ArrayList<>());
+            } else diagram.setAssociationClassLinks(new ArrayList<>(diagram.getAssociationClassLinks()));
+            return diagram;
         } catch (JacksonException exception) {
             throw new DiagramSerializationException("Could not deserialize canonical diagram", exception);
         }
@@ -44,7 +54,12 @@ public class DiagramStateSerializer {
 
     public DiagramViewState deserializeViewState(String json) {
         try {
-            return objectMapper.readValue(json, DiagramViewState.class);
+            DiagramViewState viewState = objectMapper.readValue(json, DiagramViewState.class);
+            if (viewState.getNodes() == null) viewState.setNodes(new ArrayList<>());
+            else viewState.setNodes(new ArrayList<>(viewState.getNodes()));
+            if (viewState.getRelations() == null) viewState.setRelations(new ArrayList<>());
+            else viewState.setRelations(new ArrayList<>(viewState.getRelations()));
+            return viewState;
         } catch (JacksonException exception) {
             throw new DiagramSerializationException("Could not deserialize diagram view state", exception);
         }

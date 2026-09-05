@@ -25,4 +25,7 @@ public class UmlDiagram {
 
     @Builder.Default
     private List<UmlRelation> relations = new ArrayList<>();
+
+    @Builder.Default
+    private List<AssociationClassLink> associationClassLinks = new ArrayList<>();
 }

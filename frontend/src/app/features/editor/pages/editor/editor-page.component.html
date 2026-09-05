@@ -21,9 +21,9 @@
           [class.active]="
             ($index === 0 && activeTool() === 'SELECT') ||
             ($index === 1 && activeTool() === 'CLASS') ||
-            ($index === 2 && activeTool() === 'RELATION')
+            (toolbarRelationType($index) !== null && activeTool() === 'RELATION' && relationCreationType() === toolbarRelationType($index))
           "
-          (click)="$index === 0 ? setActiveTool('SELECT') : $index === 1 ? setActiveTool('CLASS') : $index === 2 ? setActiveTool('RELATION') : null"
+          (click)="activateToolbarTool($index)"
         >
           <span>{{ tool }}</span
           ><small>{{
@@ -59,15 +59,31 @@
           <marker id="relation-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
             <path d="M 0 0 L 8 4 L 0 8 z" />
           </marker>
+          <marker id="aggregation-diamond" markerWidth="12" markerHeight="12" refX="2" refY="6" orient="auto">
+            <path d="M 1 6 L 6 1 L 11 6 L 6 11 Z" />
+          </marker>
+          <marker id="composition-diamond" markerWidth="12" markerHeight="12" refX="2" refY="6" orient="auto">
+            <path class="filled-marker" d="M 1 6 L 6 1 L 11 6 L 6 11 Z" />
+          </marker>
+          <marker id="inheritance-triangle" markerWidth="13" markerHeight="13" refX="11" refY="6" orient="auto">
+            <path d="M 1 1 L 11 6 L 1 11 Z" />
+          </marker>
+          <marker id="dependency-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto">
+            <path d="M 1 1 L 8 4 L 1 7" />
+          </marker>
         </defs>
+        @for (item of renderedAssociationClassLinks(); track item.link.id) {
+          <path class="association-class-link" [attr.d]="item.path" />
+        }
         @for (item of renderedRelations(); track item.relation.id) {
           <path class="relation-hit" [attr.d]="item.path" (click)="selectRelation(item.relation, $event)" />
           <path
             class="relation-line"
             [class.selected]="item.relation.id === selectedRelationId()"
+            [class.dependency]="item.relation.type === 'DEPENDENCY'"
             [attr.d]="item.path"
-            [attr.marker-start]="item.markerStart ? 'url(#relation-arrow)' : null"
-            [attr.marker-end]="item.markerEnd ? 'url(#relation-arrow)' : null"
+            [attr.marker-start]="relationMarkerStart(item.relation)"
+            [attr.marker-end]="relationMarkerEnd(item.relation)"
             (click)="selectRelation(item.relation, $event)"
           />
           <text class="relation-label" [attr.x]="item.sourceLabelX" [attr.y]="item.sourceLabelY">
@@ -176,17 +192,46 @@
           <span class="section-label">Elemento seleccionado</span>
           @if (selectedRelation(); as selectedRelation) {
             <div class="selected-name">
-              <span>↔</span><b>Relación</b><small>Asociación</small>
+              <span>↔</span><b>Relación</b><small>{{ relationTypeLabel(selectedRelation.relation.type) }}</small>
             </div>
             <div class="relation-inspector">
-              <p><span>Tipo</span><b>Asociación</b></p>
+              <label class="relation-field">
+                Tipo de relación
+                <select
+                  class="relation-select"
+                  [value]="selectedRelation.relation.type"
+                  [disabled]="relationPropertySaving()"
+                  (change)="changeSelectedRelationType($any($event.target).value)"
+                >
+                  @for (option of relationTypeOptions; track option.value) {
+                    <option [value]="option.value">{{ option.label }}</option>
+                  }
+                </select>
+              </label>
               <p><span>Origen</span><b>{{ selectedRelation.sourceName }}</b></p>
               <p><span>Destino</span><b>{{ selectedRelation.targetName }}</b></p>
+            </div>
+            <div class="association-class-panel">
+              <span class="section-label">Clase de asociación</span>
+              @if (selectedAssociationClassLink(); as associationLink) {
+                <b>{{ relationEndpointName(associationLink.classId) }}</b>
+                <div class="association-class-actions">
+                  <button class="btn btn-soft" type="button" (click)="goToAssociationClass()">Ir a clase</button>
+                  <button class="btn btn-ghost" type="button" [disabled]="associationClassSaving()" (click)="unlinkAssociationClass()">Desvincular</button>
+                </div>
+              } @else if (selectedRelation.relation.type === 'ASSOCIATION') {
+                <button class="btn btn-primary" type="button" [disabled]="associationClassSaving()" (click)="createAssociationClass()">
+                  {{ associationClassSaving() ? 'Creando...' : 'Crear clase de asociación' }}
+                </button>
+              }
+              @if (associationClassError()) {
+                <p class="attribute-error">{{ associationClassError() }}</p>
+              }
             </div>
             @if (relationError()) {
               <p class="attribute-error">{{ relationError() }}</p>
             }
-            @if (relationMultiplicityDraft(); as multiplicityDraft) {
+            @if (usesMultiplicity(selectedRelation.relation.type) && relationMultiplicityDraft(); as multiplicityDraft) {
               <div class="relation-property-section">
                 <span class="section-label">Propiedades de relación</span>
                 <label class="relation-field">
@@ -217,7 +262,7 @@
                 </button>
               </div>
             }
-            @if (relationRolesDraft(); as rolesDraft) {
+            @if (usesRoles(selectedRelation.relation.type) && relationRolesDraft(); as rolesDraft) {
               <div class="relation-property-section">
                 <span class="section-label">Roles</span>
                 <label class="relation-field">
@@ -233,6 +278,7 @@
                 </button>
               </div>
             }
+            @if (selectedRelation.relation.type !== 'INHERITANCE' && selectedRelation.relation.type !== 'DEPENDENCY') {
             <div class="relation-property-section">
               <span class="section-label">Navegabilidad</span>
               <label class="relation-check">
@@ -247,6 +293,7 @@
                 {{ relationPropertySaving() ? 'Guardando...' : 'Guardar cambios' }}
               </button>
             </div>
+            }
           } @else if (selectedClass(); as selected) {
             <div class="selected-name">
               <span>◇</span><b>{{ selected.umlClass.name }}</b

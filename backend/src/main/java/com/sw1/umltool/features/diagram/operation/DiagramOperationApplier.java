@@ -1,12 +1,14 @@
 package com.sw1.umltool.features.diagram.operation;
 
 import com.sw1.umltool.features.diagram.model.canonical.Multiplicity;
+import com.sw1.umltool.features.diagram.model.canonical.AssociationClassLink;
 import com.sw1.umltool.features.diagram.model.canonical.UmlAttribute;
 import com.sw1.umltool.features.diagram.model.canonical.UmlClass;
 import com.sw1.umltool.features.diagram.model.canonical.UmlDiagram;
 import com.sw1.umltool.features.diagram.model.canonical.UmlMethod;
 import com.sw1.umltool.features.diagram.model.canonical.UmlParameter;
 import com.sw1.umltool.features.diagram.model.canonical.UmlRelation;
+import com.sw1.umltool.features.diagram.model.canonical.enums.RelationType;
 import com.sw1.umltool.features.diagram.model.view.DiagramViewState;
 import com.sw1.umltool.features.diagram.model.view.NodeViewState;
 import com.sw1.umltool.features.diagram.model.view.RelationViewState;
@@ -19,8 +21,11 @@ import com.sw1.umltool.features.diagram.operation.payload.ChangeRelationRolesPay
 import com.sw1.umltool.features.diagram.operation.payload.ChangeRelationTypePayload;
 import com.sw1.umltool.features.diagram.operation.payload.CreateClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.CreateRelationPayload;
+import com.sw1.umltool.features.diagram.operation.payload.CreateAssociationClassPayload;
+import com.sw1.umltool.features.diagram.operation.payload.CreateAssociationClassLinkPayload;
 import com.sw1.umltool.features.diagram.operation.payload.DeleteClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.DeleteRelationPayload;
+import com.sw1.umltool.features.diagram.operation.payload.DeleteAssociationClassLinkPayload;
 import com.sw1.umltool.features.diagram.operation.payload.MoveClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.RemoveAttributePayload;
 import com.sw1.umltool.features.diagram.operation.payload.RemoveMethodPayload;
@@ -36,6 +41,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.ArrayList;
 
 @Component
 public class DiagramOperationApplier {
@@ -49,6 +55,9 @@ public class DiagramOperationApplier {
         }
         if (operation.getPayload() == null) {
             throw new OperationApplicationException("Operation payload is required");
+        }
+        if (diagram.getAssociationClassLinks() == null) {
+            diagram.setAssociationClassLinks(new ArrayList<>());
         }
 
         switch (operation.getType()) {
@@ -67,6 +76,9 @@ public class DiagramOperationApplier {
             case REMOVE_PARAMETER -> removeParameter(payload(operation, RemoveParameterPayload.class), diagram);
             case CREATE_RELATION -> createRelation(payload(operation, CreateRelationPayload.class), diagram, viewState);
             case DELETE_RELATION -> deleteRelation(payload(operation, DeleteRelationPayload.class), diagram, viewState);
+            case CREATE_ASSOCIATION_CLASS -> createAssociationClass(payload(operation, CreateAssociationClassPayload.class), diagram, viewState);
+            case CREATE_ASSOCIATION_CLASS_LINK -> createAssociationClassLink(payload(operation, CreateAssociationClassLinkPayload.class), diagram);
+            case DELETE_ASSOCIATION_CLASS_LINK -> deleteAssociationClassLink(payload(operation, DeleteAssociationClassLinkPayload.class), diagram);
             case CHANGE_RELATION_TYPE -> changeRelationType(payload(operation, ChangeRelationTypePayload.class), diagram);
             case CHANGE_MULTIPLICITY -> changeMultiplicity(payload(operation, ChangeMultiplicityPayload.class), diagram);
             case CHANGE_RELATION_ROLES -> changeRelationRoles(payload(operation, ChangeRelationRolesPayload.class), diagram);
@@ -98,6 +110,7 @@ public class DiagramOperationApplier {
                 .map(UmlRelation::getId).toList();
         diagram.getRelations().removeIf(relation -> relationIds.contains(relation.getId()));
         viewState.getRelations().removeIf(view -> relationIds.contains(view.getRelationId()));
+        diagram.getAssociationClassLinks().removeIf(link -> relationIds.contains(link.getRelationId()));
     }
 
     private void renameClass(RenameClassPayload payload, UmlDiagram diagram) {
@@ -197,10 +210,65 @@ public class DiagramOperationApplier {
         findRelation(diagram, payload.getRelationId());
         diagram.getRelations().removeIf(relation -> Objects.equals(relation.getId(), payload.getRelationId()));
         viewState.getRelations().removeIf(view -> Objects.equals(view.getRelationId(), payload.getRelationId()));
+        diagram.getAssociationClassLinks().removeIf(link -> Objects.equals(link.getRelationId(), payload.getRelationId()));
     }
 
     private void changeRelationType(ChangeRelationTypePayload payload, UmlDiagram diagram) {
-        findRelation(diagram, payload.getRelationId()).setType(payload.getType());
+        UmlRelation relation = findRelation(diagram, payload.getRelationId());
+        if (payload.getType() != RelationType.ASSOCIATION
+                && diagram.getAssociationClassLinks().stream()
+                .anyMatch(link -> Objects.equals(link.getRelationId(), relation.getId()))) {
+            throw new OperationApplicationException("An association class requires an ASSOCIATION relation");
+        }
+        relation.setType(payload.getType());
+    }
+
+    private void createAssociationClass(CreateAssociationClassPayload payload, UmlDiagram diagram,
+            DiagramViewState viewState) {
+        UmlRelation relation = findRelation(diagram, payload.getRelationId());
+        if (relation.getType() != RelationType.ASSOCIATION) {
+            throw new OperationApplicationException("Association classes require an ASSOCIATION relation");
+        }
+        validateAssociationClassLinkIds(payload.getLinkId(), payload.getRelationId(), payload.getClassId(), diagram);
+        requireText(payload.getName(), "Association class name is required");
+        diagram.getClasses().add(UmlClass.builder().id(payload.getClassId()).name(payload.getName())
+                .isAbstract(payload.isAbstract()).build());
+        viewState.getNodes().add(NodeViewState.builder().classId(payload.getClassId()).x(payload.getX()).y(payload.getY())
+                .width(payload.getWidth()).height(payload.getHeight()).build());
+        diagram.getAssociationClassLinks().add(AssociationClassLink.builder().id(payload.getLinkId())
+                .relationId(payload.getRelationId()).classId(payload.getClassId()).build());
+    }
+
+    private void createAssociationClassLink(CreateAssociationClassLinkPayload payload, UmlDiagram diagram) {
+        UmlRelation relation = findRelation(diagram, payload.getRelationId());
+        if (relation.getType() != RelationType.ASSOCIATION) {
+            throw new OperationApplicationException("Association classes require an ASSOCIATION relation");
+        }
+        findClass(diagram, payload.getClassId());
+        validateAssociationClassLinkIds(payload.getLinkId(), payload.getRelationId(), payload.getClassId(), diagram);
+        diagram.getAssociationClassLinks().add(AssociationClassLink.builder().id(payload.getLinkId())
+                .relationId(payload.getRelationId()).classId(payload.getClassId()).build());
+    }
+
+    private void deleteAssociationClassLink(DeleteAssociationClassLinkPayload payload, UmlDiagram diagram) {
+        findOptional(diagram.getAssociationClassLinks(), payload.getLinkId(), AssociationClassLink::getId)
+                .orElseThrow(() -> new OperationApplicationException("Association class link not found: " + payload.getLinkId()));
+        diagram.getAssociationClassLinks().removeIf(link -> Objects.equals(link.getId(), payload.getLinkId()));
+    }
+
+    private void validateAssociationClassLinkIds(String linkId, String relationId, String classId, UmlDiagram diagram) {
+        if (linkId == null || findOptional(diagram.getAssociationClassLinks(), linkId, AssociationClassLink::getId).isPresent()) {
+            throw new OperationApplicationException("Association class link id already exists or is missing: " + linkId);
+        }
+        if (classId == null || findOptional(diagram.getClasses(), classId, UmlClass::getId).isPresent()) {
+            throw new OperationApplicationException("Class id already exists or is missing: " + classId);
+        }
+        if (diagram.getAssociationClassLinks().stream().anyMatch(link -> Objects.equals(link.getRelationId(), relationId))) {
+            throw new OperationApplicationException("The relation already has an association class");
+        }
+        if (diagram.getAssociationClassLinks().stream().anyMatch(link -> Objects.equals(link.getClassId(), classId))) {
+            throw new OperationApplicationException("The class is already an association class");
+        }
     }
 
     private void changeMultiplicity(ChangeMultiplicityPayload payload, UmlDiagram diagram) {

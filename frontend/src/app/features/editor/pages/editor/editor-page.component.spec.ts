@@ -212,6 +212,97 @@ describe('EditorPageComponent', () => {
     expect(page.diagram()?.canonicalModel.relations[0].targetClassId).toBe('c1');
   });
 
+  it('changes relation type with the authoritative response', async () => {
+    const current = diagramWithClass();
+    const relation: UmlRelation = {
+      id: 'r1',
+      sourceClassId: 'c1',
+      targetClassId: 'c1',
+      type: 'ASSOCIATION',
+      sourceMultiplicity: { lower: '1', upper: '1' },
+      targetMultiplicity: { lower: '1', upper: '1' },
+      sourceRole: null,
+      targetRole: null,
+      sourceNavigable: false,
+      targetNavigable: false,
+    };
+    current.canonicalModel.relations = [relation];
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure(
+      {
+        execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
+          request = value;
+          return of({
+            newVersion: 8,
+            canonicalModel: {
+              ...current.canonicalModel,
+              relations: [{ ...relation, type: 'COMPOSITION' }],
+            },
+            viewState: current.viewState,
+          });
+        },
+      },
+      current,
+    );
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectRelation(relation, { stopPropagation: () => {} } as unknown as MouseEvent);
+    page.changeSelectedRelationType('COMPOSITION');
+    expect(request?.operation.type).toBe('CHANGE_RELATION_TYPE');
+    expect(request?.operation.baseVersion).toBe(7);
+    expect(request?.operation.payload).toEqual({ relationId: 'r1', type: 'COMPOSITION' });
+    expect(page.diagram()?.canonicalModel.relations[0].type).toBe('COMPOSITION');
+    expect(page.diagram()?.version).toBe(8);
+    expect(page.selectedRelationId()).toBe('r1');
+  });
+
+  it('creates an association class atomically and renders its dashed link', async () => {
+    const current = diagramWithClass();
+    const relation: UmlRelation = {
+      id: 'r1',
+      sourceClassId: 'c1',
+      targetClassId: 'c1',
+      type: 'ASSOCIATION',
+      sourceMultiplicity: { lower: '1', upper: '1' },
+      targetMultiplicity: { lower: '1', upper: '1' },
+      sourceRole: null,
+      targetRole: null,
+      sourceNavigable: false,
+      targetNavigable: false,
+    };
+    current.canonicalModel.relations = [relation];
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure(
+      {
+        execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
+          request = value;
+          return of({
+            newVersion: 8,
+            canonicalModel: {
+              ...current.canonicalModel,
+              classes: [
+                ...current.canonicalModel.classes,
+                { id: 'association-class', name: 'ClaseAsociacion1', isAbstract: false, attributes: [], methods: [] },
+              ],
+              associationClassLinks: [{ id: 'link-1', relationId: 'r1', classId: 'association-class' }],
+            },
+            viewState: {
+              ...current.viewState,
+              nodes: [...current.viewState.nodes, { classId: 'association-class', x: 80, y: 300, width: 240, height: 180 }],
+            },
+          });
+        },
+      },
+      current,
+    );
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectRelation(relation, { stopPropagation: () => {} } as unknown as MouseEvent);
+    page.createAssociationClass();
+    expect(request?.operation.type).toBe('CREATE_ASSOCIATION_CLASS');
+    expect(request?.operation.payload).toMatchObject({ relationId: 'r1', name: 'ClaseAsociacion1' });
+    expect(page.diagram()?.canonicalModel.associationClassLinks?.[0].relationId).toBe('r1');
+    expect(page.renderedAssociationClassLinks()[0].path).toContain('L');
+  });
+
   it('keeps the class and modal open on a version conflict', async () => {
     const current = diagramWithClass();
     await configure(

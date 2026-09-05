@@ -1,6 +1,7 @@
 package com.sw1.umltool.features.diagram.validation;
 
 import com.sw1.umltool.features.diagram.model.canonical.Multiplicity;
+import com.sw1.umltool.features.diagram.model.canonical.AssociationClassLink;
 import com.sw1.umltool.features.diagram.model.canonical.UmlAttribute;
 import com.sw1.umltool.features.diagram.model.canonical.UmlClass;
 import com.sw1.umltool.features.diagram.model.canonical.UmlDiagram;
@@ -63,6 +64,8 @@ public class CanonicalModelValidator {
                 diagram.getClasses(),
                 result
         );
+
+        validateAssociationClassLinks(diagram, result);
     }
 
     private void validateClasses(
@@ -480,6 +483,54 @@ public class CanonicalModelValidator {
                         "El límite inferior no puede ser mayor al límite superior",
                         relationId
                 );
+            }
+        }
+    }
+
+    private void validateAssociationClassLinks(UmlDiagram diagram, ValidationResult result) {
+        List<AssociationClassLink> links = diagram.getAssociationClassLinks();
+        if (links == null) return;
+
+        Set<String> classIds = new HashSet<>();
+        if (diagram.getClasses() != null) {
+            diagram.getClasses().forEach(umlClass -> {
+                if (umlClass != null && !isBlank(umlClass.getId())) classIds.add(umlClass.getId());
+            });
+        }
+        Set<String> relationIds = new HashSet<>();
+        if (diagram.getRelations() != null) {
+            diagram.getRelations().forEach(relation -> {
+                if (relation != null && !isBlank(relation.getId())) relationIds.add(relation.getId());
+            });
+        }
+        Set<String> linkIds = new HashSet<>();
+        Set<String> linkedRelations = new HashSet<>();
+        Set<String> linkedClasses = new HashSet<>();
+        for (AssociationClassLink link : links) {
+            if (link == null) {
+                result.addError("NULL_ASSOCIATION_CLASS_LINK", "El diagrama contiene un vínculo de clase de asociación nulo", null);
+                continue;
+            }
+            if (isBlank(link.getId()) || !linkIds.add(link.getId())) {
+                result.addError("INVALID_ASSOCIATION_CLASS_LINK_ID", "El vínculo de clase de asociación debe tener un id único", link.getId());
+            }
+            if (!relationIds.contains(link.getRelationId())) {
+                result.addError("INVALID_ASSOCIATION_CLASS_RELATION", "La relación del vínculo de clase de asociación no existe", link.getId());
+            } else {
+                UmlRelation relation = diagram.getRelations().stream()
+                        .filter(candidate -> candidate != null && candidate.getId().equals(link.getRelationId()))
+                        .findFirst().orElse(null);
+                if (relation != null && relation.getType() != com.sw1.umltool.features.diagram.model.canonical.enums.RelationType.ASSOCIATION) {
+                    result.addError("ASSOCIATION_CLASS_REQUIRES_ASSOCIATION", "La clase de asociación requiere una relación ASSOCIATION", link.getId());
+                }
+                if (!linkedRelations.add(link.getRelationId())) {
+                    result.addError("DUPLICATE_ASSOCIATION_CLASS_RELATION", "Una relación no puede tener múltiples clases de asociación", link.getRelationId());
+                }
+            }
+            if (!classIds.contains(link.getClassId())) {
+                result.addError("INVALID_ASSOCIATION_CLASS_CLASS", "La clase del vínculo de asociación no existe", link.getId());
+            } else if (!linkedClasses.add(link.getClassId())) {
+                result.addError("DUPLICATE_ASSOCIATION_CLASS_CLASS", "Una clase no puede representar múltiples vínculos de asociación", link.getClassId());
             }
         }
     }
