@@ -1,9 +1,10 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, OnDestroy, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { DEV_USER_ID } from '../../../../core/config/dev-user.config';
 import {
+  DiagramOperationType,
   ChangeMultiplicityPayload,
   ChangeNavigabilityPayload,
   ChangeRelationRolesPayload,
@@ -23,6 +24,11 @@ import { DiagramOperationService } from '../../services/diagram-operation.servic
 import { DiagramService } from '../../services/diagram.service';
 import { XmiImportService } from '../../services/xmi-import.service';
 import { XmiImportResponse } from '../../models/xmi-import.model';
+import { VoiceCommandPreview } from '../../models/voice-command.model';
+import { VoiceCommandParserService } from '../../services/voice-command-parser.service';
+import { VoiceRecognitionService } from '../../services/voice-recognition.service';
+import { AiVoiceCommandService } from '../../services/ai-voice-command.service';
+import { Subscription } from 'rxjs';
 
 type EditorTool = 'SELECT' | 'CLASS' | 'RELATION';
 type RelationType =
@@ -146,11 +152,14 @@ type RelationPropertyOperation =
   templateUrl: './editor-page.component.html',
   styleUrl: './editor-page.component.scss',
 })
-export class EditorPageComponent {
+export class EditorPageComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly diagramService = inject(DiagramService);
   private readonly operationService = inject(DiagramOperationService);
   private readonly xmiImportService = inject(XmiImportService);
+  private readonly voiceParser = inject(VoiceCommandParserService);
+  private readonly voiceRecognition = inject(VoiceRecognitionService);
+  private readonly aiVoiceCommand = inject(AiVoiceCommandService);
   private readonly defaultNodeWidth = 240;
   private readonly defaultNodeHeight = 180;
 
@@ -195,6 +204,13 @@ export class EditorPageComponent {
   readonly importPreview = signal<XmiImportResponse | null>(null);
   readonly importLoading = signal(false);
   readonly importError = signal('');
+  readonly voiceDialogOpen = signal(false);
+  readonly voiceState = signal<'idle' | 'listening' | 'recognized' | 'parsing' | 'ready' | 'applying' | 'error'>('idle');
+  readonly voiceText = signal('');
+  readonly voicePreview = signal<VoiceCommandPreview | null>(null);
+  readonly voiceError = signal('');
+  readonly aiParsing = signal(false);
+  private voiceSubscription?: Subscription;
   readonly selectedClass = computed(() => {
     const umlClass = this.diagram()?.canonicalModel.classes.find(
       (candidate) => candidate.id === this.selectedClassId(),
@@ -334,6 +350,11 @@ export class EditorPageComponent {
     });
   }
 
+  ngOnDestroy(): void {
+    this.voiceSubscription?.unsubscribe();
+    this.voiceRecognition.stop();
+  }
+
   setActiveTool(tool: EditorTool): void {
     this.activeTool.set(tool);
     if (tool !== 'RELATION') this.relationSourceClassId.set(null);
@@ -395,6 +416,134 @@ export class EditorPageComponent {
     this.importFile.set(null);
     this.importPreview.set(null);
     this.importError.set('');
+  }
+
+  openVoiceDialog(): void {
+    this.voiceSubscription?.unsubscribe();
+    this.voiceRecognition.stop();
+    this.voiceDialogOpen.set(true);
+    this.voiceState.set('idle');
+    this.voiceText.set('');
+    this.voicePreview.set(null);
+    this.voiceError.set('');
+  }
+
+  closeVoiceDialog(): void {
+    this.voiceSubscription?.unsubscribe();
+    this.voiceRecognition.stop();
+    this.voiceDialogOpen.set(false);
+    this.voiceState.set('idle');
+  }
+
+  startVoiceRecognition(): void {
+    if (this.voiceState() === 'listening') { this.voiceRecognition.stop(); return; }
+    this.voiceError.set('');
+    if (!this.voiceRecognition.isSupported()) {
+      this.voiceState.set('error');
+      this.voiceError.set('El reconocimiento de voz no está disponible en este navegador.');
+      return;
+    }
+    this.voiceState.set('listening');
+    this.voiceSubscription?.unsubscribe();
+    this.voiceSubscription = this.voiceRecognition.listen().subscribe((event) => {
+      if (event.type === 'result') {
+        this.voiceText.set(event.text ?? '');
+        this.voiceState.set('recognized');
+      } else if (event.type === 'error') {
+        this.voiceState.set('error');
+        this.voiceError.set(event.message ?? 'No se pudo reconocer el comando de voz.');
+      } else if (event.type === 'end' && this.voiceState() === 'listening') this.voiceState.set('recognized');
+    });
+  }
+
+  updateVoiceText(text: string): void { this.voiceText.set(text); this.voicePreview.set(null); }
+
+  interpretVoiceCommand(): void {
+    this.voiceState.set('parsing');
+    const result = this.voiceParser.parse(this.voiceText());
+    const command = result.command;
+    const commandType = command?.type ?? null;
+    this.voicePreview.set({
+      originalText: this.voiceText(),
+      commandType,
+      summary: result.success ? this.voiceSummary(command!) : '',
+      command,
+      errors: result.errors,
+      source: 'LOCAL',
+      confidence: null,
+    });
+    this.voiceError.set(result.errors.join(' '));
+    this.voiceState.set(result.success ? 'ready' : 'error');
+  }
+
+  interpretVoiceWithAi(): void {
+    const current = this.diagram();
+    if (!current || !this.voiceText().trim() || this.aiParsing()) return;
+    this.aiParsing.set(true);
+    this.voiceError.set('');
+    this.voiceState.set('parsing');
+    this.aiVoiceCommand.interpret({
+      text: this.voiceText(), language: 'es-BO',
+      diagramContext: { classes: current.canonicalModel.classes.map((item) => ({ id: item.id, name: item.name })) },
+    }).subscribe({
+      next: (response) => {
+        const command = response.command;
+        const validConfidence = response.confidence == null || response.confidence >= 0.75;
+        const errors = response.success && validConfidence ? (response.errors ?? []) : response.success ? ['No estoy suficientemente seguro de la interpretación.'] : (response.errors?.length ? response.errors : ['El servicio de IA devolvió una respuesta no válida.']);
+        this.voicePreview.set({ originalText: this.voiceText(), commandType: command?.type ?? null, summary: response.summary ?? (command ? this.voiceSummary(command) : ''), command: errors.length ? null : command, errors, source: 'AI', confidence: response.confidence });
+        this.voiceError.set(errors.join(' '));
+        this.aiParsing.set(false);
+        this.voiceState.set(errors.length ? 'error' : 'ready');
+      },
+      error: () => { this.aiParsing.set(false); this.voiceState.set('error'); this.voiceError.set('El servicio de interpretación por IA no está disponible.'); },
+    });
+  }
+
+  applyVoiceCommand(): void {
+    const command = this.voicePreview()?.command;
+    const current = this.diagram();
+    if (!command || !current || this.voiceState() === 'applying') return;
+    const classByName = (name?: string) => current.canonicalModel.classes.find((item) => item.name.toLowerCase() === name?.toLowerCase());
+    const target = classByName(command.className);
+    if (['DELETE_CLASS', 'RENAME_CLASS', 'ADD_ATTRIBUTE', 'REMOVE_ATTRIBUTE'].includes(command.type) && !target) {
+      this.voiceState.set('error'); this.voiceError.set(`No existe la clase ${command.className}.`); return;
+    }
+    if (command.type === 'ADD_METHOD' && !target) {
+      this.voiceState.set('error'); this.voiceError.set(`No existe la clase ${command.className}.`); return;
+    }
+    let type: DiagramOperationType = command.type;
+    let payload: unknown;
+    if (command.type === 'CREATE_CLASS') {
+      const point = this.voiceClassPosition();
+      payload = { classId: crypto.randomUUID(), name: command.className, isAbstract: false, ...point, width: 240, height: 180 };
+    } else if (command.type === 'DELETE_CLASS') payload = { classId: target!.id };
+    else if (command.type === 'RENAME_CLASS') payload = { classId: target!.id, name: command.newClassName };
+    else if (command.type === 'ADD_ATTRIBUTE') payload = { classId: target!.id, attribute: { id: crypto.randomUUID(), name: command.attributeName, type: command.attributeType, visibility: 'PRIVATE', isStatic: false, isFinal: false, defaultValue: null, primaryKey: false } };
+    else if (command.type === 'REMOVE_ATTRIBUTE') {
+      const attribute = target!.attributes.find((item) => item.name.toLowerCase() === command.attributeName?.toLowerCase());
+      if (!attribute) { this.voiceState.set('error'); this.voiceError.set(`No existe el atributo ${command.attributeName}.`); return; }
+      payload = { classId: target!.id, attributeId: attribute.id };
+    } else if (command.type === 'ADD_METHOD') payload = { classId: target!.id, method: { id: crypto.randomUUID(), name: command.methodName, returnType: 'void', visibility: 'PUBLIC', isStatic: false, parameters: [] } };
+    else {
+      const source = classByName(command.className), destination = classByName(command.secondaryClassName);
+      if (!source || !destination) { this.voiceState.set('error'); this.voiceError.set('No existe una de las clases indicadas.'); return; }
+      payload = { relation: { id: crypto.randomUUID(), sourceClassId: source.id, targetClassId: destination.id, type: command.relationType, sourceMultiplicity: { lower: '1', upper: '1' }, targetMultiplicity: { lower: '1', upper: '1' }, sourceRole: null, targetRole: null, sourceNavigable: false, targetNavigable: false } };
+    }
+    this.voiceState.set('applying'); this.voiceError.set('');
+    this.operationService.execute(this.diagramId, { operation: { operationId: crypto.randomUUID(), diagramId: this.diagramId, userId: DEV_USER_ID, baseVersion: current.version, type, payload: payload as never } }).subscribe({
+      next: (response) => { this.applyOperationResponse(response); this.voiceState.set('ready'); this.voiceDialogOpen.set(false); },
+      error: (error: unknown) => { this.voiceState.set('error'); this.voiceError.set(this.operationError(error, 'No se pudo aplicar el comando de voz.')); },
+    });
+  }
+
+  private voiceClassPosition(): { x: number; y: number } {
+    const canvas = document.querySelector<HTMLElement>('.canvas');
+    const rect = canvas?.getBoundingClientRect();
+    return { x: Math.max(0, ((rect?.width ?? 600) / 2 - 120 - this.panX()) / this.zoom()), y: Math.max(0, ((rect?.height ?? 400) / 2 - 30 - this.panY()) / this.zoom()) };
+  }
+
+  private voiceSummary(command: NonNullable<VoiceCommandPreview['command']>): string {
+    return command.type === 'CREATE_CLASS' ? `Crear clase ${command.className}` : command.type === 'CREATE_RELATION' ? `Crear ${command.relationType?.toLowerCase()} entre ${command.className} y ${command.secondaryClassName}` : command.type === 'ADD_ATTRIBUTE' ? `Agregar atributo ${command.attributeName}: ${command.attributeType} a ${command.className}` : command.type === 'ADD_METHOD' ? `Agregar método ${command.methodName} a ${command.className}` : command.type === 'RENAME_CLASS' ? `Renombrar ${command.className} a ${command.newClassName}` : `${command.type === 'DELETE_CLASS' ? 'Eliminar clase' : 'Eliminar atributo'} ${command.className}`;
   }
 
   selectImportFile(event: Event): void {
@@ -462,6 +611,10 @@ export class EditorPageComponent {
     const toolbar = button?.closest('.toolbar');
     if (!button || !toolbar) return;
     const buttons = Array.from(toolbar.querySelectorAll('button'));
+    if (buttons.indexOf(button) === 8) {
+      this.openVoiceDialog();
+      return;
+    }
     if (buttons.indexOf(button) === 9) {
       if (this.selectedRelationId()) {
         this.removeSelectedRelation();

@@ -864,6 +864,33 @@
       }
     </aside>
   </div>
+  @if (voiceDialogOpen()) {
+    <div class="attribute-modal-backdrop" role="presentation" (click)="closeVoiceDialog()">
+      <section class="attribute-modal voice-modal" role="dialog" aria-modal="true" aria-labelledby="voice-title" (click)="$event.stopPropagation()">
+        <div class="attribute-modal-icon">â™©</div>
+        <header class="voice-modal-header"><div class="voice-modal-identity"><span class="voice-modal-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-12 0m6 6v4m-3 0h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" /></svg></span><div><h2 id="voice-title">Asistente de voz</h2><p>Describe cambios y deja que SW1 los dibuje por ti.</p></div></div>
+        <button class="voice-close" type="button" aria-label="Cerrar asistente de voz" (click)="closeVoiceDialog()">&times;</button></header>
+        <p>{{ voiceState() === 'listening' ? 'Escuchando...' : 'Pulsa el micrófono y di un comando.' }}</p>
+        <section class="voice-microphone-section" aria-live="polite"><button class="btn btn-primary voice-listen-button" type="button" aria-label="Escuchar comando de voz" [disabled]="voiceState() === 'applying'" (click)="startVoiceRecognition()"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-12 0m6 6v4m-3 0h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" /></svg>
+          {{ voiceState() === 'listening' ? 'Detener' : '🎤 Escuchar' }}
+        </button><span class="voice-audio-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></section>
+        <label class="voice-command-field"><span>Tu comando en lenguaje natural</span>
+          <textarea rows="4" maxlength="2000" [value]="voiceText()" (input)="updateVoiceText($any($event.target).value)" placeholder="Ej. Haz que Empleado herede de Persona"></textarea>
+          <small>{{ voiceText().length }}/2000</small>
+        </label>
+        <button class="btn btn-soft voice-local-button" type="button" [disabled]="!voiceText().trim() || voiceState() === 'applying' || aiParsing()" (click)="interpretVoiceCommand()">Interpretar</button>
+        @if (voicePreview()?.errors?.length) {
+          <button class="btn btn-primary voice-ai-button" type="button" [disabled]="aiParsing() || voiceState() === 'applying'" (click)="interpretVoiceWithAi()">{{ aiParsing() ? 'Interpretando con IA...' : 'Interpretar con IA' }}</button>
+        }
+        @if (voicePreview(); as preview) {
+          @if (preview.errors.length > 0) { <p class="error-message">{{ preview.errors.join(' ') }}<br />Ejemplos: Crear clase Cliente · Agregar atributo email String a Cliente · Crear asociación entre Cliente y Pedido</p> }
+          @else { <div class="voice-preview"><b>Interpretación</b>@if (preview.source === 'AI') { <small class="voice-ai-badge">Interpretado con IA</small> }<p>{{ preview.summary }}</p><button class="btn btn-primary" type="button" [disabled]="voiceState() === 'applying'" (click)="applyVoiceCommand()">{{ voiceState() === 'applying' ? 'Aplicando...' : 'Aplicar' }}</button></div> }
+        }
+        @if (voiceError() && !voicePreview()?.errors?.length) { <p class="error-message">{{ voiceError() }}</p> }
+        <button class="btn btn-ghost voice-cancel-button" type="button" [disabled]="voiceState() === 'applying'" (click)="closeVoiceDialog()">Cancelar</button>
+      </section>
+    </div>
+  }
   @if (importDialogOpen()) {
     <div class="attribute-modal-backdrop" (click)="closeImportDialog()">
       <section class="attribute-modal import-modal" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">

@@ -4,6 +4,7 @@ import com.sw1.umltool.features.diagram.operation.OperationApplicationException;
 import com.sw1.umltool.features.diagram.operation.VersionConflictException;
 import com.sw1.umltool.features.diagram.service.DiagramNotFoundException;
 import com.sw1.umltool.features.diagram.service.DiagramSerializationException;
+import com.sw1.umltool.features.ai.voice.service.AiVoiceTimeoutException;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -47,6 +48,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({IllegalArgumentException.class, ConstraintViolationException.class})
     public ResponseEntity<ApiErrorResponse> handleBadRequest(RuntimeException exception) {
         return error(HttpStatus.BAD_REQUEST, "BAD_REQUEST", exception.getMessage());
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnavailable(IllegalStateException exception) {
+        return error(HttpStatus.SERVICE_UNAVAILABLE, "AI_SERVICE_UNAVAILABLE", exception.getMessage());
+    }
+
+    @ExceptionHandler(AiVoiceTimeoutException.class)
+    public ResponseEntity<ApiErrorResponse> handleAiTimeout(AiVoiceTimeoutException exception) {
+        return error(HttpStatus.SERVICE_UNAVAILABLE, "AI_SERVICE_UNAVAILABLE", exception.getMessage());
     }
 
     private ResponseEntity<ApiErrorResponse> error(HttpStatus status, String code, String message) {

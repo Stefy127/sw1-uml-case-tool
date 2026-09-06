@@ -33,6 +33,16 @@ function configure(operationService: object, current = detail): Promise<void> {
 }
 
 describe('EditorPageComponent', () => {
+  it('opens the voice dialog without changing the active tool', async () => {
+    await configure({ execute: () => NEVER });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.setActiveTool('CLASS');
+    page.openVoiceDialog();
+    expect(page.voiceDialogOpen()).toBe(true);
+    expect(page.activeTool()).toBe('CLASS');
+    page.closeVoiceDialog();
+  });
+
   function diagramWithClass(): DiagramDetail {
     return {
       ...detail,
