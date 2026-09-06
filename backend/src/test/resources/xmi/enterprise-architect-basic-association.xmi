@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="windows-1252"?>
+<xmi:XMI xmi:version="2.1"
+         xmlns:uml="http://schema.omg.org/spec/UML/2.1"
+         xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
+  <uml:Model xmi:id="EAID_MODEL" name="Modelo EA">
+    <packagedElement xmi:type="uml:Package" xmi:id="EAID_PACKAGE" name="Modelo">
+      <packagedElement xmi:type="uml:Class" xmi:id="EAID_CLIENTE" name="Cliente">
+        <ownedAttribute xmi:id="EAID_CLIENTE_ID" name="ID" visibility="public">
+          <type href="http://www.omg.org/spec/UML/20110701/PrimitiveTypes.xmi#Long"/>
+          <lowerValue value="1"/><upperValue value="1"/>
+        </ownedAttribute>
+        <ownedAttribute xmi:id="EAID_CLIENTE_NAME" name="Name" visibility="public">
+          <type href="http://www.omg.org/spec/UML/20110701/PrimitiveTypes.xmi#String"/>
+        </ownedAttribute>
+      </packagedElement>
+      <packagedElement xmi:type="uml:Class" xmi:id="EAID_PEDIDO" name="Pedido">
+        <ownedAttribute xmi:id="EAID_PEDIDO_FECHA" name="Fecha" visibility="private">
+          <type xmi:idref="EAnone_date"/>
+        </ownedAttribute>
+      </packagedElement>
+      <packagedElement xmi:type="uml:PrimitiveType" xmi:id="EAnone_date" name="date"/>
+      <packagedElement xmi:type="uml:Association" xmi:id="EAID_ASSOCIATION" name="Association Cliente Pedido">
+        <memberEnd xmi:idref="EAID_PEDIDO_END"/>
+        <ownedEnd xmi:id="EAID_PEDIDO_END" name="pedidos">
+          <type xmi:idref="EAID_PEDIDO"/>
+          <lowerValue value="0"/><upperValue value="-1"/>
+        </ownedEnd>
+        <memberEnd xmi:idref="EAID_CLIENTE_END"/>
+        <ownedEnd xmi:id="EAID_CLIENTE_END" name="cliente">
+          <type xmi:idref="EAID_CLIENTE"/>
+          <lowerValue value="1"/><upperValue value="1"/>
+        </ownedEnd>
+      </packagedElement>
+    </packagedElement>
+  </uml:Model>
+  <xmi:Extension extender="Enterprise Architect">
+    <element xmi:idref="EAID_CLIENTE" xmi:type="uml:Class" name="Cliente">
+      <attributes>
+        <attribute xmi:idref="EAID_CLIENTE_ID" name="ID"><properties type="Long"/></attribute>
+        <attribute xmi:idref="EAID_CLIENTE_NAME" name="Name"><properties type="String"/></attribute>
+      </attributes>
+    </element>
+    <element xmi:idref="EAID_PEDIDO" xmi:type="uml:Class" name="Pedido">
+      <attributes>
+        <attribute xmi:idref="EAID_PEDIDO_FECHA" name="Fecha"><properties type="date"/></attribute>
+      </attributes>
+    </element>
+    <connector xmi:idref="EAID_ASSOCIATION" name="Association Cliente Pedido">
+      <source xmi:idref="EAID_CLIENTE"><model name="Cliente"/></source>
+      <target xmi:idref="EAID_PEDIDO"><model name="Pedido"/></target>
+    </connector>
+  </xmi:Extension>
+</xmi:XMI>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/XMI" xmlns:uml="http://www.eclipse.org/uml2/5.0.0/UML"><uml:Model xmi:id="m">
+<packagedElement xmi:type="uml:Class" xmi:id="client" name="Cliente"/><packagedElement xmi:type="uml:Class" xmi:id="order" name="Pedido"/>
+<packagedElement xmi:type="uml:Association" xmi:id="r"><ownedEnd type="client" multiplicity="1"/><ownedEnd type="order" multiplicity="0..*"/></packagedElement>
+</uml:Model></xmi:XMI>

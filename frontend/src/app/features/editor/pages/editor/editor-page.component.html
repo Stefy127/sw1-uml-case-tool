@@ -32,7 +32,7 @@
         </button>
       }
       <hr />
-      <button>↥<small>Importar</small></button><button>♩<small>Voz</small></button>
+      <button (click)="openImportDialog()">↥<small>Importar</small></button><button>♩<small>Voz</small></button>
       <button>⌫<small>Eliminar</small></button>
       <button class="toolbar-zoom-indicator" (click)="resetZoom()">
         ⊕<small>{{ zoomPercent() }}%</small>
@@ -864,4 +864,37 @@
       }
     </aside>
   </div>
+  @if (importDialogOpen()) {
+    <div class="attribute-modal-backdrop" (click)="closeImportDialog()">
+      <section class="attribute-modal import-modal" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+        <div class="attribute-modal-icon">↥</div>
+        <h2>Importar diagrama</h2>
+        <p>Selecciona un archivo XMI/XML exportado desde Enterprise Architect.</p>
+        @if (hasDiagramContent()) {
+          <p class="error-message">Importar reemplazará el contenido actual del diagrama.</p>
+        }
+        <input type="file" accept=".xmi,.xml" (change)="selectImportFile($event)" [disabled]="importLoading()" />
+        @if (importFile(); as file) {
+          <p class="import-file">{{ file.name }} · {{ file.size }} bytes</p>
+          <button class="btn btn-primary" type="button" [disabled]="importLoading() || !importPreview()" (click)="applyImport()">
+            {{ importLoading() ? 'Importando...' : 'Importar y reemplazar' }}
+          </button>
+          @if (!importPreview()) {
+            <button class="btn btn-soft" type="button" [disabled]="importLoading()" (click)="analyzeImport()">Analizar</button>
+          }
+        }
+        @if (importPreview(); as preview) {
+          <div class="import-summary">
+            Clases: {{ preview.statistics.classes }} · Atributos: {{ preview.statistics.attributes }} ·
+            Métodos: {{ preview.statistics.methods }} · Relaciones: {{ preview.statistics.relations }}
+          </div>
+          @if (preview.warnings.length > 0) {
+            <small>{{ preview.warnings.join(' ') }}</small>
+          }
+        }
+        @if (importError()) { <p class="error-message">{{ importError() }}</p> }
+        <button class="btn btn-ghost" type="button" [disabled]="importLoading()" (click)="closeImportDialog()">Cancelar</button>
+      </section>
+    </div>
+  }
 </div>

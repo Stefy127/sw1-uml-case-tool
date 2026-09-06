@@ -1,0 +1,1 @@
+<?xml version="1.0" encoding="UTF-8"?><xmi:XMI xmlns:xmi="http://www.omg.org/XMI" xmlns:uml="http://www.eclipse.org/uml2/5.0.0/UML"><uml:Model xmi:id="m"><packagedElement xmi:type="uml:Class" xmi:id="employee" name="Empleado"/><packagedElement xmi:type="uml:Association" xmi:id="r"><ownedEnd type="employee"/><ownedEnd type="employee"/></packagedElement></uml:Model></xmi:XMI>

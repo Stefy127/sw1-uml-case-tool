@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/XMI" xmlns:uml="http://www.eclipse.org/uml2/5.0.0/UML">
+  <uml:Model xmi:id="model"><packagedElement xmi:type="uml:Class" xmi:id="class-client" name="Cliente">
+    <ownedAttribute xmi:id="a1" name="id" type="Long"/><ownedAttribute xmi:id="a2" name="nombre" type="String"/>
+    <ownedOperation xmi:id="op1" name="buscar"><ownedParameter xmi:id="p1" name="id" type="Long"/><ownedParameter xmi:id="p2" direction="return" type="Cliente"/></ownedOperation>
+  </packagedElement></uml:Model>
+</xmi:XMI>

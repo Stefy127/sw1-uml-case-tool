@@ -21,6 +21,8 @@ import {
 } from '../../models/diagram.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
 import { DiagramService } from '../../services/diagram.service';
+import { XmiImportService } from '../../services/xmi-import.service';
+import { XmiImportResponse } from '../../models/xmi-import.model';
 
 type EditorTool = 'SELECT' | 'CLASS' | 'RELATION';
 type RelationType =
@@ -148,6 +150,7 @@ export class EditorPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly diagramService = inject(DiagramService);
   private readonly operationService = inject(DiagramOperationService);
+  private readonly xmiImportService = inject(XmiImportService);
   private readonly defaultNodeWidth = 240;
   private readonly defaultNodeHeight = 180;
 
@@ -187,6 +190,11 @@ export class EditorPageComponent {
   readonly zoomPercent = computed(() => Math.round(this.zoom() * 100));
   readonly styleSaving = signal(false);
   readonly styleError = signal('');
+  readonly importDialogOpen = signal(false);
+  readonly importFile = signal<File | null>(null);
+  readonly importPreview = signal<XmiImportResponse | null>(null);
+  readonly importLoading = signal(false);
+  readonly importError = signal('');
   readonly selectedClass = computed(() => {
     const umlClass = this.diagram()?.canonicalModel.classes.find(
       (candidate) => candidate.id === this.selectedClassId(),
@@ -374,6 +382,79 @@ export class EditorPageComponent {
 
   onEditorKeyup(event: KeyboardEvent): void {
     if (event.code === 'Space') this.spacePressed.set(false);
+  }
+
+  openImportDialog(): void {
+    this.importDialogOpen.set(true);
+    this.importError.set('');
+  }
+
+  closeImportDialog(): void {
+    if (this.importLoading()) return;
+    this.importDialogOpen.set(false);
+    this.importFile.set(null);
+    this.importPreview.set(null);
+    this.importError.set('');
+  }
+
+  selectImportFile(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.[0] ?? null;
+    this.importFile.set(file);
+    this.importPreview.set(null);
+    this.importError.set('');
+  }
+
+  analyzeImport(): void {
+    const file = this.importFile();
+    if (!file || this.importLoading()) return;
+    this.importLoading.set(true);
+    this.importError.set('');
+    this.xmiImportService.preview(file).subscribe({
+      next: (preview) => {
+        this.importPreview.set(preview);
+        this.importLoading.set(false);
+      },
+      error: () => {
+        this.importError.set('No se pudo analizar el archivo XMI.');
+        this.importLoading.set(false);
+      },
+    });
+  }
+
+  applyImport(): void {
+    const file = this.importFile();
+    const current = this.diagram();
+    if (!file || !current || this.importLoading()) return;
+    this.importLoading.set(true);
+    this.importError.set('');
+    this.xmiImportService.apply(this.diagramId, current.version, file).subscribe({
+      next: (result) => {
+        this.diagram.set({
+          ...current,
+          canonicalModel: result.canonicalModel,
+          viewState: result.viewState,
+          version: result.canonicalModel.version,
+          updatedAt: new Date().toISOString(),
+        });
+        this.importLoading.set(false);
+        this.closeImportDialog();
+        this.resetViewport();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.importError.set(error.status === 409
+          ? 'El diagrama cambió en otra sesión. Recarga para obtener la versión más reciente.'
+          : 'No se pudo importar el diagrama.');
+        this.importLoading.set(false);
+      },
+    });
+  }
+
+  hasDiagramContent(): boolean {
+    const current = this.diagram();
+    return Boolean(current && (
+      current.canonicalModel.classes.length > 0 ||
+      current.canonicalModel.relations.length > 0
+    ));
   }
 
   handleToolbarClick(event: MouseEvent): void {
