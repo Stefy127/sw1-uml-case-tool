@@ -248,6 +248,35 @@ h3 {
 .voice-modal .voice-feedback small { color: var(--color-text-muted); font-size: 10px; }
 .voice-modal > .voice-cancel-button { display: block; margin: 8px 0 0; padding-top: 16px; border-top: 1px solid var(--color-border); }
 @media (max-width: 640px) { .voice-modal { padding: 22px; border-radius: 20px; } .voice-modal > .voice-local-button,.voice-modal > .voice-ai-button { width: 100%; margin-bottom: 8px; } }
+.import-modal-backdrop { z-index: 100; background: rgb(37 43 67 / 38%); backdrop-filter: blur(3px); }
+.import-modal { width: min(600px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; border-radius: 24px; padding: 30px; }
+.import-modal > .attribute-modal-icon,.import-modal > p:not(.error-message):first-of-type { display: none; }
+.import-modal-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 22px; }
+.import-modal-header > div { flex: 1; }
+.import-modal-header h2 { margin: 0 0 5px; }
+.import-modal-header p { color: var(--color-text-muted); font-size: 12px; }
+.import-modal-icon { display: grid; width: 44px; height: 44px; place-items: center; flex: 0 0 44px; border-radius: 13px; color: var(--color-primary); background: var(--color-primary-soft); }
+.import-modal-icon svg,.import-dropzone svg { width: 25px; height: 25px; }
+.import-modal-close { width: 32px; height: 32px; border: 0; border-radius: 50%; color: var(--color-text-muted); background: transparent; cursor: pointer; font-size: 22px; }
+.import-modal-close:hover { color: var(--color-primary); background: var(--color-primary-soft); }
+.import-dropzone { display: grid; min-height: 220px; place-items: center; align-content: center; gap: 10px; border: 1.5px dashed var(--color-primary); border-radius: 16px; padding: 24px; color: var(--color-text); background: color-mix(in srgb, var(--color-primary-soft) 35%, white); text-align: center; cursor: pointer; transition: .2s ease; }
+.import-dropzone:hover,.import-dropzone.drag-over { border-color: color-mix(in srgb, var(--color-primary) 80%, black); background: var(--color-primary-soft); transform: translateY(-1px); }
+.import-dropzone > svg { width: 42px; height: 42px; color: var(--color-primary); }
+.import-dropzone > span:not(.btn) { color: var(--color-text-muted); font-size: 11px; }
+.import-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.import-file { margin: 14px 0 8px; border: 1px solid var(--color-border); border-radius: 12px; padding: 12px; color: var(--color-text); background: var(--color-surface-alt); overflow-wrap: anywhere; }
+.import-file-type { margin: -3px 0 8px; color: var(--color-text-muted); font-size: 11px; }
+.import-change,.import-remove { display: inline-block; margin: 0 0 10px; padding: 7px 10px; border-radius: 9px; font-size: 11px; cursor: pointer; }
+.import-remove { float: right; margin-bottom: 10px; color: var(--color-danger); }
+.import-analyze,.import-apply { width: 100%; margin: 8px 0; }
+.import-summary { clear: both; margin-top: 14px; border-radius: 12px; padding: 14px; color: var(--color-primary); background: var(--color-primary-soft); font-weight: 600; }
+.import-confidence { margin-top: 10px !important; color: var(--color-text-muted) !important; font-size: 12px; }
+.import-classes { display: grid; gap: 5px; margin: 10px 0; color: var(--color-text); font-size: 12px; }
+.import-confirmation { display: grid; gap: 12px; margin: 14px 0; border: 1px solid var(--color-border); border-radius: 12px; padding: 14px; color: var(--color-text); background: var(--color-primary-soft); font-size: 12px; }
+.import-confirmation > div { display: flex; justify-content: flex-end; gap: 8px; }
+.import-classes span { color: var(--color-text-muted); }
+.import-modal > small { display: block; margin: 10px 0; padding: 10px; border-radius: 9px; color: var(--color-text-muted); background: color-mix(in srgb, #f1c75b 16%, white); }
+@media (max-width: 640px) { .import-modal { padding: 22px; border-radius: 20px; } .import-dropzone { min-height: 180px; padding: 18px; } }
 @media (max-width: 520px) {
   .attribute-modal-actions { flex-direction: column-reverse; }
   .attribute-modal-actions .btn { width: 100%; }

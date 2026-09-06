@@ -69,6 +69,19 @@ class XmiParserTest {
     }
 
     @Test
+    void importsEnterpriseArchitectAssociationClassAndEmptyClass() throws Exception {
+        var diagram = parser.parse(read("enterprise-architect-association-class.xmi"), "d", "D").getCanonicalModel();
+        assertEquals(4, diagram.getClasses().size());
+        assertTrue(diagram.getClasses().stream().anyMatch(c -> c.getName().equals("Class1")));
+        assertEquals(2, diagram.getRelations().size());
+        assertEquals("1", diagram.getRelations().getFirst().getSourceMultiplicity().getLower());
+        assertEquals("0", diagram.getRelations().getFirst().getTargetMultiplicity().getLower());
+        assertEquals("*", diagram.getRelations().getFirst().getTargetMultiplicity().getUpper());
+        assertEquals(1, diagram.getAssociationClassLinks().size());
+        assertTrue(diagram.getClasses().stream().anyMatch(c -> c.getName().equals("Empleado") && c.getAttributes().isEmpty()));
+    }
+
+    @Test
     void rejectsInvalidXmlAndDoctype() {
         assertThrows(IllegalArgumentException.class, () -> parser.parse(read("invalid.xmi"), "d", "D"));
         assertThrows(IllegalArgumentException.class, () -> parser.parse(read("xxe.xmi"), "d", "D"));

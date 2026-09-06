@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="windows-1252"?>
+<xmi:XMI xmi:version="2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1">
+  <uml:Model xmi:type="uml:Model" name="EA_Model">
+    <packagedElement xmi:type="uml:Package" xmi:id="EAPK_MODEL" name="Model">
+      <packagedElement xmi:type="uml:AssociationClass" xmi:id="EAID_CLASS1" name="Class1">
+        <memberEnd xmi:idref="EAID_AC_SRC"/><memberEnd xmi:idref="EAID_AC_DST"/>
+        <ownedEnd xmi:type="uml:Property" xmi:id="EAID_AC_SRC"><type xmi:idref="EAID_EMPLEADO"/></ownedEnd>
+        <ownedEnd xmi:type="uml:Property" xmi:id="EAID_AC_DST"><type xmi:idref="EAID_CLIENTE"/></ownedEnd>
+      </packagedElement>
+      <packagedElement xmi:type="uml:Class" xmi:id="EAID_CLIENTE" name="Cliente">
+        <ownedAttribute xmi:type="uml:Property" xmi:id="EAID_ID" name="ID" visibility="private"><type xmi:type="uml:PrimitiveType" href="http://schema.omg.org/spec/UML/2.1/uml.xml#UnlimitedNatural"/></ownedAttribute>
+        <ownedAttribute xmi:type="uml:Property" xmi:id="EAID_NAME" name="Name" visibility="private"><type xmi:type="uml:PrimitiveType" href="http://schema.omg.org/spec/UML/2.1/uml.xml#String"/></ownedAttribute>
+      </packagedElement>
+      <packagedElement xmi:type="uml:Class" xmi:id="EAID_EMPLEADO" name="Empleado"/>
+      <packagedElement xmi:type="uml:Class" xmi:id="EAID_PEDIDO" name="Pedido">
+        <ownedAttribute xmi:type="uml:Property" xmi:id="EAID_FECHA" name="Fecha" visibility="private"><type xmi:idref="EAnone_date"/></ownedAttribute>
+      </packagedElement>
+      <packagedElement xmi:type="uml:PrimitiveType" xmi:id="EAnone_date" name="date"/>
+      <packagedElement xmi:type="uml:Association" xmi:id="EAID_ASSOC" name="Association A">
+        <memberEnd xmi:idref="EAID_ASSOC_PEDIDO"/><ownedEnd xmi:type="uml:Property" xmi:id="EAID_ASSOC_PEDIDO" name="role b"><type xmi:idref="EAID_PEDIDO"/><lowerValue value="0"/><upperValue value="-1"/></ownedEnd>
+        <memberEnd xmi:idref="EAID_ASSOC_CLIENTE"/><ownedEnd xmi:type="uml:Property" xmi:id="EAID_ASSOC_CLIENTE" name="role a"><type xmi:idref="EAID_CLIENTE"/><lowerValue value="1"/><upperValue value="1"/></ownedEnd>
+      </packagedElement>
+    </packagedElement>
+  </uml:Model>
+  <xmi:Extension extender="Enterprise Architect">
+    <connectors>
+      <connector xmi:idref="EAID_ASSOC"><source xmi:idref="EAID_CLIENTE"/><target xmi:idref="EAID_PEDIDO"/></connector>
+      <connector xmi:idref="EAID_AC_REL"><source xmi:idref="EAID_EMPLEADO"/><target xmi:idref="EAID_CLIENTE"/><properties ea_type="Association" subtype="Class"/><extendedProperties associationclass="EAID_CLASS1"/></connector>
+    </connectors>
+  </xmi:Extension>
+</xmi:XMI>

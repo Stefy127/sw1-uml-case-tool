@@ -7,6 +7,8 @@ import { DiagramDetail, UmlAttribute, UmlMethod, UmlParameter, UmlRelation } fro
 import { ExecuteDiagramOperationRequest } from '../../models/diagram-operation.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
 import { DiagramService } from '../../services/diagram.service';
+import { XmiImportService } from '../../services/xmi-import.service';
+import { ImageImportService } from '../../services/image-import.service';
 import { EditorPageComponent } from './editor-page.component';
 
 const detail: DiagramDetail = {
@@ -20,12 +22,14 @@ const detail: DiagramDetail = {
   viewState: { diagramId: 'd1', nodes: [], relations: [] },
 };
 
-function configure(operationService: object, current = detail): Promise<void> {
+function configure(operationService: object, current = detail, xmiImport: object = {}, imageImport: object = {}): Promise<void> {
   return TestBed.configureTestingModule({
     imports: [EditorPageComponent],
     providers: [
       { provide: DiagramService, useValue: { getDiagramById: () => of(current) } },
       { provide: DiagramOperationService, useValue: operationService },
+      { provide: XmiImportService, useValue: { preview: () => NEVER, apply: () => NEVER, ...xmiImport } },
+      { provide: ImageImportService, useValue: { preview: () => NEVER, apply: () => NEVER, ...imageImport } },
       provideRouter([]),
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'd1' } } } },
     ],
@@ -33,6 +37,33 @@ function configure(operationService: object, current = detail): Promise<void> {
 }
 
 describe('EditorPageComponent', () => {
+  it('accepts XMI and image files and rejects unsupported formats', async () => {
+    await configure({ execute: () => NEVER });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    const select = (file: File) => page.selectImportFile({ target: { files: [file] } } as unknown as Event);
+    select(new File(['xmi'], 'model.xmi', { type: 'application/xml' }));
+    expect(page.importKind()).toBe('XMI');
+    select(new File(['png'], 'diagram.png', { type: 'image/png' }));
+    expect(page.importKind()).toBe('IMAGE');
+    select(new File(['bad'], 'diagram.pdf', { type: 'application/pdf' }));
+    expect(page.importFile()).toBeNull();
+    expect(page.importError()).toContain('Formato no compatible');
+  });
+
+  it('uses image preview for dropped images and can remove the selected file', async () => {
+    let previews = 0;
+    const response = { canonicalModel: detail.canonicalModel, viewState: detail.viewState, warnings: [], statistics: { classes: 1, attributes: 0, methods: 0, relations: 0, associationClasses: 0 }, confidence: .9, detectedClassNames: ['Cliente'] };
+    await configure({ execute: () => NEVER }, detail, {}, { preview: () => { previews++; return of(response); } });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    const file = new File(['png'], 'diagram.png', { type: 'image/png' });
+    page.onImportDrop({ preventDefault: () => undefined, dataTransfer: { files: [file] } } as unknown as DragEvent);
+    page.analyzeImport();
+    expect(previews).toBe(1);
+    expect(page.importPreview()?.confidence).toBe(.9);
+    page.removeImportFile();
+    expect(page.importFile()).toBeNull();
+  });
+
   it('opens the voice dialog without changing the active tool', async () => {
     await configure({ execute: () => NEVER });
     const page = TestBed.createComponent(EditorPageComponent).componentInstance;

@@ -40,7 +40,7 @@ public class XmiParser {
             Map<String, String> namedTypes = namedTypes(document);
             List<UmlClass> classes = new ArrayList<>();
             List<NodeViewState> nodes = new ArrayList<>();
-            List<Element> classElements = typedElements(document, "Class");
+            List<Element> classElements = classElements(document);
             for (int i = 0; i < classElements.size(); i++) {
                 Element element = classElements.get(i);
                 String external = id(element);
@@ -57,6 +57,8 @@ public class XmiParser {
                         .width(240).height(180).build());
             }
             List<UmlRelation> relations = new ArrayList<>();
+            Map<String, String> relationIds = new LinkedHashMap<>();
+            Map<String, String> associationClassRelations = new LinkedHashMap<>();
             for (UmlClass umlClass : classes) {
                 Element source = findByMappedId(document, ids, umlClass.getId());
                 if (source == null) continue;
@@ -85,6 +87,7 @@ public class XmiParser {
                 }
             }
             for (Element association : typedElements(document, "Association")) {
+                if (isAssociationClassConnector(document, id(association))) continue;
                 List<Element> ends = children(association, "ownedEnd", "Property", "property");
                 if (ends.size() < 2) { warnings.add("Asociación sin dos extremos: " + value(association, "name", "sin nombre")); continue; }
                 String[] connector = connectorEndpoints(document, id(association));
@@ -97,19 +100,45 @@ public class XmiParser {
                 if (source == null || target == null) { warnings.add("Asociación con referencia de clase no resuelta"); continue; }
                 RelationType type = "composite".equals(sourceEnd.getAttribute("aggregation")) ? RelationType.COMPOSITION
                         : "shared".equals(sourceEnd.getAttribute("aggregation")) ? RelationType.AGGREGATION : RelationType.ASSOCIATION;
-                relations.add(UmlRelation.builder().id(UUID.randomUUID().toString()).sourceClassId(source).targetClassId(target).type(type)
+                String relationId = UUID.randomUUID().toString();
+                relations.add(UmlRelation.builder().id(relationId).sourceClassId(source).targetClassId(target).type(type)
                         .sourceMultiplicity(multiplicity(sourceEnd)).targetMultiplicity(multiplicity(targetEnd))
                         .sourceRole(emptyToNull(sourceEnd.getAttribute("name"))).targetRole(emptyToNull(targetEnd.getAttribute("name"))).build());
+                relationIds.put(id(association), relationId);
+            }
+            for (Element connector : elements(document, "connector")) {
+                String associationClassId = associationClassId(connector);
+                if (associationClassId == null) continue;
+                Element sourceElement = first(connector, "source");
+                Element targetElement = first(connector, "target");
+                String source = sourceElement == null ? null : resolveReference(sourceElement, ids);
+                String target = targetElement == null ? null : resolveReference(targetElement, ids);
+                if (source == null || target == null) {
+                    warnings.add("Clase de asociaciÃ³n con extremos no resueltos");
+                    continue;
+                }
+                String relationId = UUID.randomUUID().toString();
+                relations.add(UmlRelation.builder().id(relationId).sourceClassId(source).targetClassId(target)
+                        .type(RelationType.ASSOCIATION).sourceMultiplicity(connectorMultiplicity(sourceElement))
+                        .targetMultiplicity(connectorMultiplicity(targetElement)).build());
+                relationIds.put(associationClassId, relationId);
+                associationClassRelations.put(associationClassId, relationId);
             }
             for (Element generalization : typedElements(document, "Generalization")) addRelation(relations, generalization, ids, RelationType.INHERITANCE, "specific", "general", warnings);
             for (Element dependency : typedElements(document, "Dependency")) addRelation(relations, dependency, ids, RelationType.DEPENDENCY, "client", "supplier", warnings);
+            List<AssociationClassLink> links = new ArrayList<>();
+            for (Map.Entry<String, String> entry : associationClassRelations.entrySet()) {
+                String classId = ids.get(entry.getKey());
+                if (classId != null) links.add(AssociationClassLink.builder().id(UUID.randomUUID().toString())
+                        .relationId(entry.getValue()).classId(classId).build());
+            }
             UmlDiagram diagram = UmlDiagram.builder().id(diagramId).name(name == null ? "Diagrama importado" : name).version(0)
-                    .classes(classes).relations(relations).associationClassLinks(new ArrayList<>()).build();
+                    .classes(classes).relations(relations).associationClassLinks(links).build();
             DiagramViewState view = DiagramViewState.builder().diagramId(diagramId).nodes(nodes).relations(new ArrayList<>()).build();
             return XmiImportPreviewResponse.builder().canonicalModel(diagram).viewState(view).warnings(warnings)
                     .statistics(XmiImportPreviewResponse.Statistics.builder().classes(classes.size())
                             .attributes(classes.stream().mapToInt(c -> c.getAttributes().size()).sum())
-                            .methods(classes.stream().mapToInt(c -> c.getMethods().size()).sum()).relations(relations.size()).associationClasses(0).build()).build();
+                            .methods(classes.stream().mapToInt(c -> c.getMethods().size()).sum()).relations(relations.size()).associationClasses(links.size()).build()).build();
         } catch (IllegalArgumentException exception) { throw exception;
         } catch (Exception exception) { throw new IllegalArgumentException("No se pudo analizar el archivo XML/XMI", exception); }
     }
@@ -120,7 +149,7 @@ public class XmiParser {
         result.add(UmlRelation.builder().id(UUID.randomUUID().toString()).sourceClassId(source).targetClassId(target).type(type)
                 .sourceMultiplicity(Multiplicity.builder().lower("0").upper("*").build()).targetMultiplicity(Multiplicity.builder().lower("0").upper("*").build()).build());
     }
-    private Element findByMappedId(Document d, Map<String,String> ids, String mapped) { for (Element e : typedElements(d,"Class")) if (mapped.equals(ids.get(id(e)))) return e; return null; }
+    private Element findByMappedId(Document d, Map<String,String> ids, String mapped) { for (Element e : classElements(d)) if (mapped.equals(ids.get(id(e)))) return e; return null; }
     private String resolveReference(Element e, Map<String,String> ids) { return resolveReference(e, ids, "type"); }
     private String resolveReference(Element e, Map<String,String> ids, String key) { String v=e.getAttribute(key); Element child=first(e,key); if(v.isBlank()&&child!=null)v=externalReference(child); if(v.isBlank())v=externalReference(e); if(v.isBlank())v=e.getAttribute("href"); if(v.contains("#"))v=v.substring(v.indexOf('#')+1); return ids.get(v); }
     private Multiplicity multiplicity(Element e) { String value=e.getAttribute("multiplicity"); if(value.isBlank()){String lower=value(first(e,"lowerValue"),"value","0");String upper=value(first(e,"upperValue"),"value","1");if("-1".equals(upper))upper="*";return Multiplicity.builder().lower(lower).upper(upper).build();} String[] p=value.split("\\.\\.");return Multiplicity.builder().lower(p[0]).upper(p.length>1?"-1".equals(p[1])?"*":p[1]:p[0]).build(); }
@@ -135,9 +164,13 @@ public class XmiParser {
     private Element first(Element e,String n){for(Element x:children(e,n))return x;return null;}
     private String emptyToNull(String s){return s==null||s.isBlank()?null:s;}
     private boolean isInsideModel(Element element) { for(Node n=element.getParentNode();n instanceof Element parent;n=parent.getParentNode()) if("Model".equals(local(parent)))return true; return false; }
+    private List<Element> classElements(Document d) { List<Element> result = new ArrayList<>(typedElements(d, "Class")); result.addAll(typedElements(d, "AssociationClass")); return result.stream().distinct().toList(); }
     private String externalReference(Element e) { if(e==null)return ""; String v=e.getAttribute("xmi:idref");if(v.isBlank())v=e.getAttribute("xmi:id");if(v.isBlank())v=e.getAttributeNS("http://schema.omg.org/spec/XMI/2.1","idref");return v; }
     private Map<String,String> namedTypes(Document d) { Map<String,String> result=new HashMap<>();for(Element e:typedElements(d,"PrimitiveType"))result.put(id(e),value(e,"name","Object"));for(Element e:typedElements(d,"DataType"))result.put(id(e),value(e,"name","Object"));return result; }
     private Map<String,String> extensionAttributeTypes(Document d) { Map<String,String> result=new HashMap<>();for(Element e:elements(d,"attribute")){String ref=externalReference(e);Element properties=first(e,"properties");String type=properties==null?"":properties.getAttribute("type");if(!ref.isBlank()&&!type.isBlank())result.put(ref,type);}return result; }
     private String[] connectorEndpoints(Document d,String relationId) { if(relationId==null)return null;for(Element connector:elements(d,"connector")){if(!relationId.equals(externalReference(connector)))continue;Element source=first(connector,"source"),target=first(connector,"target");if(source!=null&&target!=null)return new String[]{externalReference(source),externalReference(target)};}return null; }
+    private boolean isAssociationClassConnector(Document d, String associationId) { for (Element connector : elements(d, "connector")) if (associationId != null && associationId.equals(externalReference(connector)) && associationClassId(connector) != null) return true; return false; }
+    private String associationClassId(Element connector) { Element extended = first(connector, "extendedProperties"); if (extended == null) return null; String value = extended.getAttribute("associationclass"); return value.isBlank() ? null : value; }
+    private Multiplicity connectorMultiplicity(Element end) { Element type = first(end, "type"); String value = type == null ? "" : type.getAttribute("multiplicity"); if (value.isBlank()) return Multiplicity.builder().lower("1").upper("1").build(); String[] parts = value.replace(" ", "").split("\\.\\.", -1); return Multiplicity.builder().lower(parts[0]).upper(parts.length > 1 ? "-1".equals(parts[1]) ? "*" : parts[1] : parts[0]).build(); }
     private Element endForClass(List<Element> ends,String externalClassId) { if(externalClassId==null)return null;for(Element end:ends){Element type=first(end,"type");if(externalClassId.equals(externalReference(type)))return end;}return null; }
 }

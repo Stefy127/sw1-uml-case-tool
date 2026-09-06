@@ -13,4 +13,6 @@ export interface XmiImportResponse {
   viewState: DiagramViewState;
   warnings: string[];
   statistics: XmiImportStatistics;
+  confidence?: number | null;
+  detectedClassNames?: string[];
 }

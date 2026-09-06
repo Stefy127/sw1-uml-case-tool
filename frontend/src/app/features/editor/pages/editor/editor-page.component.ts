@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { DecimalPipe } from '@angular/common';
 import { Component, computed, inject, OnDestroy, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
@@ -23,6 +24,7 @@ import {
 import { DiagramOperationService } from '../../services/diagram-operation.service';
 import { DiagramService } from '../../services/diagram.service';
 import { XmiImportService } from '../../services/xmi-import.service';
+import { ImageImportService } from '../../services/image-import.service';
 import { XmiImportResponse } from '../../models/xmi-import.model';
 import { VoiceCommandPreview } from '../../models/voice-command.model';
 import { VoiceCommandParserService } from '../../services/voice-command-parser.service';
@@ -148,7 +150,7 @@ type RelationPropertyOperation =
 
 @Component({
   selector: 'app-editor-page',
-  imports: [RouterLink],
+  imports: [RouterLink, DecimalPipe],
   templateUrl: './editor-page.component.html',
   styleUrl: './editor-page.component.scss',
 })
@@ -157,6 +159,7 @@ export class EditorPageComponent implements OnDestroy {
   private readonly diagramService = inject(DiagramService);
   private readonly operationService = inject(DiagramOperationService);
   private readonly xmiImportService = inject(XmiImportService);
+  private readonly imageImportService = inject(ImageImportService);
   private readonly voiceParser = inject(VoiceCommandParserService);
   private readonly voiceRecognition = inject(VoiceRecognitionService);
   private readonly aiVoiceCommand = inject(AiVoiceCommandService);
@@ -204,6 +207,12 @@ export class EditorPageComponent implements OnDestroy {
   readonly importPreview = signal<XmiImportResponse | null>(null);
   readonly importLoading = signal(false);
   readonly importError = signal('');
+  readonly importConfirming = signal(false);
+  readonly importDragOver = signal(false);
+  readonly importKind = computed<'XMI' | 'IMAGE' | null>(() => {
+    const name = this.importFile()?.name.toLowerCase() ?? '';
+    return name.endsWith('.xmi') || name.endsWith('.xml') ? 'XMI' : name ? 'IMAGE' : null;
+  });
   readonly voiceDialogOpen = signal(false);
   readonly voiceState = signal<'idle' | 'listening' | 'recognized' | 'parsing' | 'ready' | 'applying' | 'error'>('idle');
   readonly voiceText = signal('');
@@ -408,6 +417,8 @@ export class EditorPageComponent implements OnDestroy {
   openImportDialog(): void {
     this.importDialogOpen.set(true);
     this.importError.set('');
+    this.importDragOver.set(false);
+    this.importConfirming.set(false);
   }
 
   closeImportDialog(): void {
@@ -416,6 +427,8 @@ export class EditorPageComponent implements OnDestroy {
     this.importFile.set(null);
     this.importPreview.set(null);
     this.importError.set('');
+    this.importDragOver.set(false);
+    this.importConfirming.set(false);
   }
 
   openVoiceDialog(): void {
@@ -548,9 +561,56 @@ export class EditorPageComponent implements OnDestroy {
 
   selectImportFile(event: Event): void {
     const file = (event.target as HTMLInputElement).files?.[0] ?? null;
-    this.importFile.set(file);
+    this.setImportFile(file);
+  }
+
+  onImportDragOver(event: DragEvent): void {
+    event.preventDefault();
+    if (!this.importLoading()) this.importDragOver.set(true);
+  }
+
+  onImportDragLeave(event: DragEvent): void {
+    event.preventDefault();
+    this.importDragOver.set(false);
+  }
+
+  onImportDrop(event: DragEvent): void {
+    event.preventDefault();
+    this.importDragOver.set(false);
+    this.setImportFile(event.dataTransfer?.files?.[0] ?? null);
+  }
+
+  removeImportFile(): void {
+    if (this.importLoading()) return;
+    this.setImportFile(null);
+  }
+
+  requestImportApply(): void {
+    if (this.hasDiagramContent()) this.importConfirming.set(true);
+    else this.applyImport();
+  }
+
+  cancelImportConfirmation(): void {
+    this.importConfirming.set(false);
+  }
+
+  private setImportFile(file: File | null): void {
     this.importPreview.set(null);
     this.importError.set('');
+    this.importConfirming.set(false);
+    if (!file) { this.importFile.set(null); return; }
+    const extension = file.name.toLowerCase().split('.').pop() ?? '';
+    if (!['xmi', 'xml', 'png', 'jpg', 'jpeg', 'webp'].includes(extension)) {
+      this.importFile.set(null);
+      this.importError.set('Formato no compatible. Usa PNG, JPG, JPEG, WEBP, XMI o XML.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      this.importFile.set(null);
+      this.importError.set('El archivo supera el límite de 10 MB.');
+      return;
+    }
+    this.importFile.set(file);
   }
 
   analyzeImport(): void {
@@ -558,13 +618,18 @@ export class EditorPageComponent implements OnDestroy {
     if (!file || this.importLoading()) return;
     this.importLoading.set(true);
     this.importError.set('');
-    this.xmiImportService.preview(file).subscribe({
+    const request = this.importKind() === 'IMAGE'
+      ? this.imageImportService.preview(file)
+      : this.xmiImportService.preview(file);
+    request.subscribe({
       next: (preview) => {
         this.importPreview.set(preview);
         this.importLoading.set(false);
       },
-      error: () => {
-        this.importError.set('No se pudo analizar el archivo XMI.');
+      error: (error: HttpErrorResponse) => {
+        this.importError.set(error.error?.message ?? (this.importKind() === 'IMAGE'
+          ? 'No pudimos reconocer un diagrama UML en esta imagen.'
+          : 'No se pudo analizar el archivo XMI.'));
         this.importLoading.set(false);
       },
     });
@@ -576,7 +641,10 @@ export class EditorPageComponent implements OnDestroy {
     if (!file || !current || this.importLoading()) return;
     this.importLoading.set(true);
     this.importError.set('');
-    this.xmiImportService.apply(this.diagramId, current.version, file).subscribe({
+    const request = this.importKind() === 'IMAGE'
+      ? this.imageImportService.apply(this.diagramId, current.version, file)
+      : this.xmiImportService.apply(this.diagramId, current.version, file);
+    request.subscribe({
       next: (result) => {
         this.diagram.set({
           ...current,
@@ -587,12 +655,16 @@ export class EditorPageComponent implements OnDestroy {
         });
         this.importLoading.set(false);
         this.closeImportDialog();
-        this.resetViewport();
+        queueMicrotask(() => {
+          const viewport = document.querySelector<HTMLElement>('.canvas');
+          if (viewport) this.fitToContent({ currentTarget: viewport } as unknown as Event);
+          else this.resetViewport();
+        });
       },
       error: (error: HttpErrorResponse) => {
         this.importError.set(error.status === 409
           ? 'El diagrama cambió en otra sesión. Recarga para obtener la versión más reciente.'
-          : 'No se pudo importar el diagrama.');
+          : (error.error?.message ?? 'No se pudo importar el diagrama.'));
         this.importLoading.set(false);
       },
     });

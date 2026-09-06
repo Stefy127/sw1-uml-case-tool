@@ -892,22 +892,27 @@
     </div>
   }
   @if (importDialogOpen()) {
-    <div class="attribute-modal-backdrop" (click)="closeImportDialog()">
+    <div class="attribute-modal-backdrop import-modal-backdrop" (click)="closeImportDialog()">
       <section class="attribute-modal import-modal" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
         <div class="attribute-modal-icon">↥</div>
-        <h2>Importar diagrama</h2>
+        <header class="import-modal-header"><span class="import-modal-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4m-4 4 4-4 4 4M5 14v5h14v-5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" /></svg></span><div><h2>Importar diagrama</h2><p>Convierte una imagen o archivo XMI en un modelo UML editable.</p></div><button class="import-modal-close" type="button" aria-label="Cerrar importación" [disabled]="importLoading()" (click)="closeImportDialog()">&times;</button></header>
         <p>Selecciona un archivo XMI/XML exportado desde Enterprise Architect.</p>
-        @if (hasDiagramContent()) {
+        @if (hasDiagramContent() && importPreview()) {
           <p class="error-message">Importar reemplazará el contenido actual del diagrama.</p>
         }
-        <input type="file" accept=".xmi,.xml" (change)="selectImportFile($event)" [disabled]="importLoading()" />
+        <label class="import-dropzone" [class.drag-over]="importDragOver()" (dragover)="onImportDragOver($event)" (dragleave)="onImportDragLeave($event)" (drop)="onImportDrop($event)">
+          <input id="import-file-input" class="import-file-input" type="file" accept=".xmi,.xml,.png,.jpg,.jpeg,.webp" (change)="selectImportFile($event)" [disabled]="importLoading()" />
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-4 4 4-4 4 4M5 14v5h14v-5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" /></svg>
+          <b>Arrastra un archivo aquí</b><span>PNG, JPG, JPEG, WEBP, XMI o XML · hasta 10 MB</span><span class="btn btn-soft">Seleccionar archivo</span>
+        </label>
         @if (importFile(); as file) {
           <p class="import-file">{{ file.name }} · {{ file.size }} bytes</p>
-          <button class="btn btn-primary" type="button" [disabled]="importLoading() || !importPreview()" (click)="applyImport()">
+          <div class="import-file-type">{{ importKind() === 'IMAGE' ? 'Imagen UML' : 'Enterprise Architect XMI' }}</div><label class="btn btn-soft import-change" for="import-file-input">Cambiar</label><button class="btn btn-ghost import-remove" type="button" [disabled]="importLoading()" (click)="removeImportFile()">Eliminar</button>
+          @if (importPreview() && !importConfirming()) { <button class="btn btn-primary import-apply" type="button" [disabled]="importLoading()" (click)="requestImportApply()">
             {{ importLoading() ? 'Importando...' : 'Importar y reemplazar' }}
-          </button>
+          </button> }
           @if (!importPreview()) {
-            <button class="btn btn-soft" type="button" [disabled]="importLoading()" (click)="analyzeImport()">Analizar</button>
+            <button class="btn btn-primary import-analyze" type="button" [disabled]="importLoading()" (click)="analyzeImport()">{{ importLoading() ? (importKind() === 'IMAGE' ? 'Interpretando estructura UML con IA...' : 'Leyendo modelo XMI...') : 'Analizar diagrama' }}</button>
           }
         }
         @if (importPreview(); as preview) {
@@ -915,12 +920,19 @@
             Clases: {{ preview.statistics.classes }} · Atributos: {{ preview.statistics.attributes }} ·
             Métodos: {{ preview.statistics.methods }} · Relaciones: {{ preview.statistics.relations }}
           </div>
+          @if (preview.confidence !== null && preview.confidence !== undefined) {
+            <p class="import-confidence">Confianza IA: {{ preview.confidence * 100 | number:'1.0-0' }}%</p>
+          }
+          @if (preview.detectedClassNames?.length) {
+            <div class="import-classes"><b>Clases detectadas</b><span>{{ preview.detectedClassNames?.join(' · ') }}</span></div>
+          }
           @if (preview.warnings.length > 0) {
             <small>{{ preview.warnings.join(' ') }}</small>
           }
         }
         @if (importError()) { <p class="error-message">{{ importError() }}</p> }
-        <button class="btn btn-ghost" type="button" [disabled]="importLoading()" (click)="closeImportDialog()">Cancelar</button>
+        @if (importConfirming()) { <div class="import-confirmation"><b>Esta importación reemplazará el contenido actual del diagrama.</b><div><button class="btn btn-ghost" type="button" (click)="cancelImportConfirmation()">Cancelar</button><button class="btn btn-primary" type="button" [disabled]="importLoading()" (click)="applyImport()">Importar y reemplazar</button></div></div> }
+        @if (!importConfirming()) { <button class="btn btn-ghost import-footer-cancel" type="button" [disabled]="importLoading()" (click)="closeImportDialog()">Cancelar</button> }
       </section>
     </div>
   }
