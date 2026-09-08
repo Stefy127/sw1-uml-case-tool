@@ -26,14 +26,14 @@
         ><span class="nav-icon">⊞</span><span>Importar diagrama</span></a
       ><a class="nav-item" routerLink="/editor/demo"
         ><span class="nav-icon">&lt;/&gt;</span><span>Generar backend</span></a
-      ><a class="nav-item" routerLink="/settings/appearance"
+      ><a class="nav-item" routerLink="/appearance"
         ><span class="nav-icon">◌</span><span>Apariencia</span></a
       >
     </div>
     <div class="sidebar-foot">
       <a class="nav-item" routerLink="/projects"
         ><span class="nav-icon">?</span><span>Ayuda y recursos</span></a
-      ><a class="nav-item" routerLink="/settings/appearance"
+      ><a class="nav-item" routerLink="/account"
         ><span class="nav-icon">⚙</span><span>Configuración</span></a
       >
     </div>
@@ -43,7 +43,7 @@
       <button class="mobile-menu" (click)="collapsed = !collapsed">☰</button>
       <div class="top-search">⌕ <span>Buscar proyectos...</span></div>
       <div class="top-actions">
-        <span class="bell">♧</span><span class="avatar rose">MG</span><span class="chevron">⌄</span>
+        @if (auth.authLoading()) { <span class="auth-loading">Cargando...</span> } @else if (auth.currentUser(); as user) { <span class="bell">♧</span><button class="account-trigger" (click)="toggleUserMenu()" aria-label="Abrir menú de cuenta"><span class="avatar rose">{{ initials }}</span><span class="user-name">{{ user.firstName }}</span><span class="chevron">⌄</span></button>@if (userMenuOpen) { <div class="account-menu"><strong>{{ user.firstName }} {{ user.lastName }}</strong><small>{{ user.email }}</small><a routerLink="/projects">Mis proyectos</a><a routerLink="/account">Configuración de cuenta</a><a routerLink="/appearance">Apariencia</a><button (click)="auth.logout()">Cerrar sesión</button></div> } } @else { <a class="auth-link" routerLink="/login">Iniciar sesión</a><a class="auth-register" routerLink="/register">Regístrate</a> }
       </div>
     </header>
     <router-outlet />

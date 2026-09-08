@@ -145,6 +145,14 @@ export class ThemeService {
   restore() {
     this.select(this.presets[0]);
   }
+  applyServerTheme(themeName: string | null | undefined) {
+    const preset = this.presets.find((candidate) => candidate.name.toUpperCase() === (themeName ?? 'LAVENDER').toUpperCase()) ?? this.presets[0];
+    this.active.set(preset.name);
+    this.custom.set({ ...preset.colors });
+    this.apply(preset.colors);
+    localStorage.setItem('sw1-theme', preset.name);
+    localStorage.setItem('sw1-theme-colors', JSON.stringify(preset.colors));
+  }
   private apply(colors: Record<string, string>) {
     Object.entries(colors).forEach(([key, value]) =>
       document.documentElement.style.setProperty(

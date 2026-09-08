@@ -2,7 +2,7 @@
   <div class="welcome">
     <div>
       <span class="eyebrow">MARTES, 18 DE JUNIO DE 2024</span>
-      <h1>Buenos días, María <b>✦</b></h1>
+      <h1>{{ auth?.currentUser() ? 'Buenos días, ' + auth?.currentUser()?.firstName : 'Bienvenido a SW1 UML' }} <b>✦</b></h1>
       <p>Diseña, colabora y construye algo increíble hoy.</p>
     </div>
     <button class="btn btn-primary" (click)="openCreate()">＋ Nuevo proyecto</button>

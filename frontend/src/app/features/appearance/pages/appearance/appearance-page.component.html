@@ -17,7 +17,7 @@
         <button
           class="palette"
           [class.selected]="theme.active() === preset.name"
-          (click)="theme.select(preset)"
+        (click)="selectTheme(preset)"
         >
           <span class="swatches"
             ><i [style.background]="preset.colors['primary']"></i

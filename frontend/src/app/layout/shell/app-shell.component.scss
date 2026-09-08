@@ -106,10 +106,20 @@
   color: var(--color-text-muted);
 }
 .top-actions {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
 }
+.account-trigger { display: flex; align-items: center; gap: 8px; border: 0; padding: 0; color: var(--color-text); background: transparent; }
+.account-menu { position: absolute; z-index: 10; top: 46px; right: 0; display: grid; gap: 8px; min-width: 220px; padding: 14px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: var(--shadow-md); }
+.account-menu strong { font-size: 13px; }
+.account-menu small { color: var(--color-text-muted); }
+.account-menu a,.account-menu button { padding: 7px 4px; border: 0; color: var(--color-text-muted); background: transparent; text-align: left; font: inherit; font-size: 12px; }
+.account-menu a:hover,.account-menu button:hover { color: var(--color-primary); }
+.auth-link,.auth-register { padding: 9px 13px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 700; }
+.auth-link { color: var(--color-primary); }
+.auth-register { color: white; background: var(--color-primary); }
 .bell,
 .chevron {
   color: var(--color-text-muted);

@@ -6,12 +6,12 @@
       <h1>Bienvenido</h1>
       <p>Diseña, colabora y convierte tus ideas en sistemas.</p>
     </div>
-    <form>
-      <label>Correo electrónico<input type="email" placeholder="tu@correo.com" /></label
-      ><label>Contraseña<input type="password" placeholder="••••••••" /></label
-      ><button class="btn btn-primary" type="button">Iniciar sesión <span>→</span></button>
+    <form (ngSubmit)="submit()">
+      <label>Correo electrónico<input name="email" [(ngModel)]="email" type="email" placeholder="tu@correo.com" /></label
+      ><label>Contraseña<input name="password" [(ngModel)]="password" type="password" placeholder="••••••••" /></label
+      >@if (error()) { <p class="error-message">{{ error() }}</p> }<button class="btn btn-primary" type="submit" [disabled]="loading()">{{ loading() ? 'Iniciando...' : 'Iniciar sesión' }} <span>→</span></button>
     </form>
-    <p class="signup">¿Aún no tienes cuenta? <a routerLink="/projects">Crear cuenta</a></p>
+    <p class="signup">¿Aún no tienes cuenta? <a routerLink="/register">Crear cuenta</a></p>
   </section>
   <section class="login-art">
     <div class="blob blob-one"></div>

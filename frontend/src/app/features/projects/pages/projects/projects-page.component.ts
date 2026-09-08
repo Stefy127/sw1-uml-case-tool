@@ -1,7 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
-import { DEV_USER_ID } from '../../../../core/config/dev-user.config';
+import { AuthService } from '../../../auth/services/auth.service';
 import { Project } from '../../models/project.model';
 import { ProjectService } from '../../services/project.service';
 
@@ -13,6 +13,7 @@ import { ProjectService } from '../../services/project.service';
 })
 export class ProjectsPageComponent {
   private readonly projectService = inject(ProjectService);
+  readonly auth = inject(AuthService, { optional: true });
   readonly query = signal('');
   readonly projects = signal<Project[]>([]);
   readonly loading = signal(true);
@@ -35,7 +36,9 @@ export class ProjectsPageComponent {
   loadProjects(): void {
     this.loading.set(true);
     this.error.set('');
-    this.projectService.getProjectsByOwner(DEV_USER_ID).subscribe({
+    const userId = this.auth?.currentUser()?.id;
+    if (!userId) { this.projects.set([]); this.loading.set(false); return; }
+    this.projectService.getProjectsByOwner(userId).subscribe({
       next: (projects) => {
         this.projects.set(projects);
         this.loading.set(false);
@@ -73,7 +76,7 @@ export class ProjectsPageComponent {
       .createProject({
         name,
         description: this.createDescription().trim(),
-        ownerUserId: DEV_USER_ID,
+        ownerUserId: this.auth?.currentUser()?.id ?? '',
       })
       .subscribe({
         next: () => {
