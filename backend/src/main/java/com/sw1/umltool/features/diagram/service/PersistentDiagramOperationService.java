@@ -20,6 +20,7 @@ public class PersistentDiagramOperationService {
     private final DiagramRepository diagramRepository;
     private final DiagramStateSerializer diagramStateSerializer;
     private final DiagramOperationService diagramOperationService;
+    private final com.sw1.umltool.features.project.service.ProjectAccessService access;
 
     public PersistentDiagramOperationService(
             DiagramRepository diagramRepository,
@@ -28,10 +29,19 @@ public class PersistentDiagramOperationService {
         this.diagramRepository = diagramRepository;
         this.diagramStateSerializer = diagramStateSerializer;
         this.diagramOperationService = diagramOperationService;
+        this.access = null;
     }
+    @org.springframework.beans.factory.annotation.Autowired
+    public PersistentDiagramOperationService(DiagramRepository repository, DiagramStateSerializer serializer, DiagramOperationService operationService, com.sw1.umltool.features.project.service.ProjectAccessService access) { this.diagramRepository=repository; this.diagramStateSerializer=serializer; this.diagramOperationService=operationService; this.access=access; }
 
     @Transactional
     public OperationExecutionResult execute(String diagramId, DiagramOperation operation) {
+        return executeInternal(diagramId, operation, null);
+    }
+    public OperationExecutionResult execute(String diagramId, DiagramOperation operation, String userId) {
+        return executeInternal(diagramId, operation, userId);
+    }
+    private OperationExecutionResult executeInternal(String diagramId, DiagramOperation operation, String userId) {
         if (isBlank(diagramId)) {
             throw new OperationApplicationException("Diagram id is required");
         }
@@ -44,6 +54,7 @@ public class PersistentDiagramOperationService {
 
         DiagramEntity entity = diagramRepository.findById(diagramId)
                 .orElseThrow(() -> new DiagramNotFoundException("Diagram not found: " + diagramId));
+        if (userId != null) access.requireDiagramEditor(diagramId, userId);
         UmlDiagram diagram = diagramStateSerializer.deserializeCanonical(entity.getCanonicalModelJson());
         DiagramViewState viewState = diagramStateSerializer.deserializeViewState(entity.getViewStateJson());
 

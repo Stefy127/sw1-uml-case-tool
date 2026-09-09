@@ -14,6 +14,7 @@
         </div>
       </div>
       <div class="detail-actions">
+        @if (currentUserRole() === 'OWNER') { <button class="btn btn-soft" type="button" (click)="openShare()">Compartir</button> }
         <button class="btn btn-soft">♧　Compartir</button
         ><a [routerLink]="['/editor', diagrams()[0]?.id]" class="btn btn-primary"
           >⌁　Abrir editor</a
@@ -65,6 +66,7 @@
         <div class="card collaborators">
           <div class="side-title">
             <h3>Colaboradores</h3>
+            @for (member of members(); track member.id) { <div class="person real-person"><span class="avatar rose">{{ memberInitials(member) }}</span><span><b>{{ member.firstName }} {{ member.lastName }}</b><small>{{ member.role }}</small></span><i class="online"></i></div> }
             <span>♧</span>
           </div>
           <div class="person">
@@ -81,6 +83,18 @@
           </p>
         </div>
       </aside>
+    </div>
+  }
+  @if (shareOpen()) {
+    <div class="modal-backdrop share-backdrop" role="presentation" (click)="shareOpen.set(false)">
+      <section class="share-panel" role="dialog" aria-modal="true" aria-labelledby="share-title" (click)="$event.stopPropagation()">
+        <div class="panel-heading"><div><h2 id="share-title">Compartir proyecto</h2><p>Administra quién puede ver y editar este espacio.</p></div><button class="close-button" type="button" aria-label="Cerrar" (click)="shareOpen.set(false)">×</button></div>
+        <div class="member-add"><label for="member-email">Agregar colaborador</label><div class="member-add-row"><input id="member-email" type="email" [value]="memberEmail()" (input)="memberEmail.set($any($event.target).value)" placeholder="correo@ejemplo.com" /><select [value]="memberRole()" (change)="memberRole.set($any($event.target).value)"><option value="EDITOR">Editor</option><option value="VIEWER">Lector</option></select></div><button class="btn btn-primary" type="button" [disabled]="memberLoading()" (click)="addMember()">Agregar</button></div>
+        <h3 class="members-heading">Personas con acceso</h3>
+        <div class="members-list">@for (member of members(); track member.id) { <div class="member-row"><span class="avatar rose">{{ memberInitials(member) }}</span><span class="member-copy"><b>{{ member.firstName }} {{ member.lastName }}</b><small>{{ member.email }}</small></span>@if (member.role === 'OWNER') { <span class="member-role">Propietario</span> } @else { <select class="member-role-select" [value]="member.role" [disabled]="memberLoading()" (change)="changeMemberRole(member, $any($event.target).value)"><option value="EDITOR">Editor</option><option value="VIEWER">Lector</option></select><button class="member-remove" type="button" [disabled]="memberLoading()" (click)="removeMember(member)">Quitar</button> }</div> }</div>
+        @if (memberError()) { <p class="error-message">{{ memberError() }}</p> } @if (memberMessage()) { <p class="success-message">{{ memberMessage() }}</p> }
+        <div class="panel-actions"><button class="btn btn-ghost" type="button" (click)="shareOpen.set(false)">Cerrar</button></div>
+      </section>
     </div>
   }
   @if (showCreate()) {

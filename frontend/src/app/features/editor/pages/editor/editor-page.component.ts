@@ -31,6 +31,8 @@ import { VoiceCommandParserService } from '../../services/voice-command-parser.s
 import { VoiceRecognitionService } from '../../services/voice-recognition.service';
 import { AiVoiceCommandService } from '../../services/ai-voice-command.service';
 import { Subscription } from 'rxjs';
+import { ProjectMember, ProjectMemberRole } from '../../../projects/models/project.model';
+import { ProjectService } from '../../../projects/services/project.service';
 
 type EditorTool = 'SELECT' | 'CLASS' | 'RELATION';
 type RelationType =
@@ -163,6 +165,7 @@ export class EditorPageComponent implements OnDestroy {
   private readonly voiceParser = inject(VoiceCommandParserService);
   private readonly voiceRecognition = inject(VoiceRecognitionService);
   private readonly aiVoiceCommand = inject(AiVoiceCommandService);
+  private readonly projectService = inject(ProjectService, { optional: true });
   private readonly defaultNodeWidth = 240;
   private readonly defaultNodeHeight = 180;
 
@@ -177,6 +180,9 @@ export class EditorPageComponent implements OnDestroy {
   readonly relationSourceClassId = signal<string | null>(null);
   readonly relationSaving = signal(false);
   readonly relationError = signal('');
+  readonly currentUserRole = signal<ProjectMemberRole | null>(null);
+  readonly projectMembers = signal<ProjectMember[]>([]);
+  readonly isReadOnly = computed(() => this.currentUserRole() === 'VIEWER');
   readonly pendingRelationDeletion = signal<UmlRelation | null>(null);
   readonly relationMultiplicityDraft = signal<RelationMultiplicityDraft | null>(null);
   readonly relationRolesDraft = signal<RelationRolesDraft | null>(null);
@@ -350,6 +356,10 @@ export class EditorPageComponent implements OnDestroy {
     this.diagramService.getDiagramById(this.diagramId).subscribe({
       next: (diagram) => {
         this.diagram.set(diagram);
+        if (this.projectService) {
+          this.projectService.getMyRole(diagram.projectId).subscribe({ next: (role) => this.currentUserRole.set(role.role), error: () => this.currentUserRole.set(null) });
+          this.projectService.getMembers(diagram.projectId).subscribe({ next: (members) => this.projectMembers.set(members), error: () => this.projectMembers.set([]) });
+        }
         this.loading.set(false);
       },
       error: () => {
@@ -365,12 +375,14 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   setActiveTool(tool: EditorTool): void {
+    if (this.isReadOnly() && tool !== 'SELECT') return;
     this.activeTool.set(tool);
     if (tool !== 'RELATION') this.relationSourceClassId.set(null);
     if (tool !== 'RELATION') this.relationError.set('');
   }
 
   setRelationTool(type: RelationType): void {
+    if (this.isReadOnly()) return;
     this.relationCreationType.set(type);
     this.setActiveTool('RELATION');
   }
@@ -513,6 +525,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   applyVoiceCommand(): void {
+    if (this.isReadOnly()) return;
     const command = this.voicePreview()?.command;
     const current = this.diagram();
     if (!command || !current || this.voiceState() === 'applying') return;
@@ -636,6 +649,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   applyImport(): void {
+    if (this.isReadOnly()) return;
     const file = this.importFile();
     const current = this.diagram();
     if (!file || !current || this.importLoading()) return;
@@ -697,6 +711,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   removeSelectedClass(): void {
+    if (this.isReadOnly()) return;
     const currentClass = this.selectedClass()?.umlClass;
     if (!currentClass || this.classDeleteSaving()) {
       if (!currentClass) {
@@ -717,6 +732,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   confirmClassDeletion(): void {
+    if (this.isReadOnly()) return;
     const currentDiagram = this.diagram();
     const currentClass = this.pendingClassDeletion();
     if (!currentDiagram || !currentClass || this.classDeleteSaving()) return;
@@ -762,6 +778,7 @@ export class EditorPageComponent implements OnDestroy {
     field: 'headerColor' | 'bodyColor' | 'borderColor',
     event: Event,
   ): void {
+    if (this.isReadOnly()) return;
     const color = (event.target as HTMLInputElement).value;
     const node = this.selectedNode();
     if (!node || this.styleSaving()) return;
@@ -774,6 +791,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   resetClassStyle(): void {
+    if (this.isReadOnly()) return;
     const node = this.selectedNode();
     if (!node || this.styleSaving()) return;
     this.executeClassStyle({
@@ -796,6 +814,7 @@ export class EditorPageComponent implements OnDestroy {
     bodyColor: string | null;
     borderColor: string | null;
   }): void {
+    if (this.isReadOnly()) return;
     const currentDiagram = this.diagram();
     if (!currentDiagram) return;
     this.styleSaving.set(true);
@@ -871,6 +890,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   changeSelectedRelationType(type: RelationType): void {
+    if (this.isReadOnly()) return;
     const relation = this.selectedRelation()?.relation;
     const currentDiagram = this.diagram();
     if (!relation || !currentDiagram || relation.type === type || this.relationPropertySaving()) return;
@@ -1003,6 +1023,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   saveRelationMultiplicity(): void {
+    if (this.isReadOnly()) return;
     const relation = this.selectedRelation()?.relation;
     const draft = this.relationMultiplicityDraft();
     if (!relation || !draft || this.relationPropertySaving()) return;
@@ -1023,6 +1044,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   saveRelationRoles(): void {
+    if (this.isReadOnly()) return;
     const relation = this.selectedRelation()?.relation;
     const draft = this.relationRolesDraft();
     if (!relation || !draft || this.relationPropertySaving()) return;
@@ -1040,6 +1062,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   saveRelationNavigability(): void {
+    if (this.isReadOnly()) return;
     const relation = this.selectedRelation()?.relation;
     const draft = this.relationNavigabilityDraft();
     if (!relation || this.relationPropertySaving()) return;
@@ -1091,6 +1114,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   private executeRelationProperty(operation: RelationPropertyOperation): void {
+    if (this.isReadOnly()) return;
     const currentDiagram = this.diagram();
     if (!currentDiagram) return;
     this.relationPropertySaving.set(true);
@@ -1127,6 +1151,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   private createRelation(sourceClassId: string, targetClassId: string): void {
+    if (this.isReadOnly()) return;
     const currentDiagram = this.diagram();
     if (!currentDiagram || this.relationSaving()) return;
     const relationId = crypto.randomUUID();
@@ -1178,6 +1203,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   removeSelectedRelation(): void {
+    if (this.isReadOnly()) return;
     const relation = this.selectedRelation()?.relation;
     if (!relation || this.relationSaving()) return;
     this.relationError.set('');
@@ -1191,6 +1217,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   confirmRelationDeletion(): void {
+    if (this.isReadOnly()) return;
     const currentDiagram = this.diagram();
     const relation = this.pendingRelationDeletion();
     if (!currentDiagram || !relation || this.relationSaving()) return;
@@ -1231,7 +1258,7 @@ export class EditorPageComponent implements OnDestroy {
       this.startPan(event, canvas);
       return;
     }
-    if (this.activeTool() !== 'SELECT' || this.moving()) return;
+    if (this.isReadOnly() || this.activeTool() !== 'SELECT' || this.moving()) return;
     const currentDiagram = this.diagram();
     const rendered = this.renderedClasses().find((item) => item.umlClass.id === umlClass.id);
     if (!currentDiagram || !rendered) return;
@@ -1258,7 +1285,7 @@ export class EditorPageComponent implements OnDestroy {
 
   onResizePointerDown(item: RenderedUmlClass, event: PointerEvent): void {
     event.stopPropagation();
-    if (this.activeTool() !== 'SELECT' || this.resizing() || this.moving()) return;
+    if (this.isReadOnly() || this.activeTool() !== 'SELECT' || this.resizing() || this.moving()) return;
     const state: ResizeState = {
       classId: item.umlClass.id,
       pointerId: event.pointerId,
@@ -1607,6 +1634,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   startAddAttribute(): void {
+    if (this.isReadOnly()) return;
     if (!this.selectedClass()) return;
     this.editingAttributeId.set(null);
     this.attributeError.set('');
@@ -1623,6 +1651,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   startEditAttribute(attribute: UmlAttribute): void {
+    if (this.isReadOnly()) return;
     this.editingAttributeId.set(attribute.id);
     this.attributeError.set('');
     this.advancedAttributeOptionsOpen.set(
@@ -1655,6 +1684,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   saveAttribute(): void {
+    if (this.isReadOnly()) return;
     if (this.attributeSaving()) return;
     const currentDiagram = this.diagram();
     const currentClass = this.selectedClass()?.umlClass;
@@ -1750,6 +1780,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   removeAttribute(attribute: UmlAttribute): void {
+    if (this.isReadOnly()) return;
     if (!this.selectedClass() || this.attributeSaving()) return;
     this.attributeError.set('');
     this.pendingAttributeDeletion.set(attribute);
@@ -1760,6 +1791,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   confirmAttributeDeletion(): void {
+    if (this.isReadOnly()) return;
     const currentDiagram = this.diagram();
     const currentClass = this.selectedClass()?.umlClass;
     const attribute = this.pendingAttributeDeletion();
@@ -1795,6 +1827,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   startAddMethod(): void {
+    if (this.isReadOnly()) return;
     if (!this.selectedClass()) return;
     this.editingMethodId.set(null);
     this.parameterDraft.set(null);
@@ -1805,6 +1838,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   startEditMethod(method: UmlMethod): void {
+    if (this.isReadOnly()) return;
     this.editingMethodId.set(method.id);
     this.parameterDraft.set(null);
     this.editingParameterId.set(null);
@@ -1835,6 +1869,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   saveMethod(): void {
+    if (this.isReadOnly()) return;
     if (this.methodSaving()) return;
     const currentDiagram = this.diagram();
     const currentClass = this.selectedClass()?.umlClass;
@@ -1926,6 +1961,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   removeMethod(method: UmlMethod): void {
+    if (this.isReadOnly()) return;
     if (this.methodSaving() || !this.selectedClass()) return;
     this.methodError.set('');
     this.pendingMethodDeletion.set(method);
@@ -1936,6 +1972,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   confirmMethodDeletion(): void {
+    if (this.isReadOnly()) return;
     const currentDiagram = this.diagram();
     const currentClass = this.selectedClass()?.umlClass;
     const method = this.pendingMethodDeletion();
@@ -1970,6 +2007,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   startAddParameter(): void {
+    if (this.isReadOnly()) return;
     if (!this.editingMethodId() || !this.methodDraft()) return;
     this.editingParameterId.set(null);
     this.parameterError.set('');
@@ -1977,6 +2015,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   startEditParameter(parameter: UmlParameter): void {
+    if (this.isReadOnly()) return;
     this.editingParameterId.set(parameter.id);
     this.parameterError.set('');
     this.parameterDraft.set({ name: parameter.name, type: parameter.type });
@@ -1995,6 +2034,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   saveParameter(): void {
+    if (this.isReadOnly()) return;
     if (this.methodSaving()) return;
     const currentDiagram = this.diagram();
     const currentClass = this.selectedClass()?.umlClass;
@@ -2060,6 +2100,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   removeParameter(parameter: UmlParameter): void {
+    if (this.isReadOnly()) return;
     if (this.methodSaving() || !this.editingMethodId()) return;
     this.parameterError.set('');
     this.pendingParameterDeletion.set(parameter);
@@ -2070,6 +2111,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   confirmParameterDeletion(): void {
+    if (this.isReadOnly()) return;
     const currentDiagram = this.diagram();
     const currentClass = this.selectedClass()?.umlClass;
     const methodId = this.editingMethodId();
@@ -2126,6 +2168,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   createClassAt(x: number, y: number): void {
+    if (this.isReadOnly()) return;
     const currentDiagram = this.diagram();
     if (!currentDiagram || !this.diagramId) return;
     const classId = crypto.randomUUID();
@@ -2199,6 +2242,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   confirmInlineEdit(): void {
+    if (this.isReadOnly()) return;
     if (this.renaming()) return;
     const classId = this.editingClassId();
     const currentDiagram = this.diagram();

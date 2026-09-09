@@ -1,6 +1,7 @@
 package com.sw1.umltool.features.project.repository;
 
 import com.sw1.umltool.features.project.model.ProjectMemberEntity;
+import com.sw1.umltool.features.project.model.ProjectMemberRole;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -13,4 +14,5 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMemberEnti
     Optional<ProjectMemberEntity> findByProjectIdAndUserId(String projectId, String userId);
 
     boolean existsByProjectIdAndUserId(String projectId, String userId);
+    List<ProjectMemberEntity> findByUserIdAndRoleNot(String userId, ProjectMemberRole role);
 }

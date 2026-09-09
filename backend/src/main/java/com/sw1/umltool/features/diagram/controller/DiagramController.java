@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
 
 import java.util.List;
 
@@ -32,21 +33,22 @@ public class DiagramController {
     }
 
     @PostMapping
-    public ResponseEntity<DiagramDetailResponse> create(@Valid @RequestBody CreateDiagramRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(toDetail(diagramService.createDiagram(
-                request.getProjectId(), request.getName())));
+    public ResponseEntity<DiagramDetailResponse> create(@Valid @RequestBody CreateDiagramRequest request, Authentication authentication) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(toDetail(authentication == null
+                ? diagramService.createDiagram(request.getProjectId(), request.getName())
+                : diagramService.createDiagram(request.getProjectId(), request.getName(), authentication.getName())));
     }
 
     @GetMapping
-    public List<DiagramSummaryResponse> findByProject(@RequestParam String projectId) {
-        return diagramService.findByProjectId(projectId).stream()
+    public List<DiagramSummaryResponse> findByProject(@RequestParam String projectId, Authentication authentication) {
+        return (authentication == null ? diagramService.findByProjectId(projectId) : diagramService.findByProjectId(projectId, authentication.getName())).stream()
                 .map(DiagramMapper::toSummary)
                 .toList();
     }
 
     @GetMapping("/{diagramId}")
-    public ResponseEntity<DiagramDetailResponse> findById(@PathVariable String diagramId) {
-        return diagramService.findById(diagramId)
+    public ResponseEntity<DiagramDetailResponse> findById(@PathVariable String diagramId, Authentication authentication) {
+        return (authentication == null ? diagramService.findById(diagramId) : diagramService.findById(diagramId, authentication.getName()))
                 .map(entity -> ResponseEntity.ok(toDetail(entity)))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }

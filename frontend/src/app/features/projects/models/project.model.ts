@@ -12,3 +12,5 @@ export interface CreateProjectRequest {
   description?: string;
   ownerUserId: string;
 }
+export type ProjectMemberRole = 'OWNER' | 'EDITOR' | 'VIEWER';
+export interface ProjectMember { id: string; userId: string; firstName: string; lastName: string; email: string; role: ProjectMemberRole; }

@@ -8,7 +8,8 @@
       <span>{{ error() || 'Guardado · versión ' + (diagram()?.version ?? '—') }}</span>
     </div>
     <div class="editor-actions">
-      <span class="avatar rose">MG</span><span class="avatar sky">JR</span>
+      @if (isReadOnly()) { <span class="read-only-badge">Solo lectura</span> }
+      @for (member of projectMembers().slice(0, 3); track member.id) { <span class="avatar rose real-collaborator" [title]="member.firstName + ' ' + member.lastName">{{ member.firstName[0] }}{{ member.lastName[0] }}</span> }
       <button class="btn btn-soft">♧ Compartir</button>
       <button class="btn btn-primary">&lt;/&gt; Generar backend</button>
     </div>
@@ -18,6 +19,7 @@
     <aside class="toolbar" (click)="handleToolbarClick($event)">
       @for (tool of tools; track $index) {
         <button
+          [disabled]="isReadOnly() && $index !== 0"
           [class.active]="
             ($index === 0 && activeTool() === 'SELECT') ||
             ($index === 1 && activeTool() === 'CLASS') ||

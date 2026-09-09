@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
 
 @RestController
 @RequestMapping("/api/diagrams/{diagramId}/operations")
@@ -28,8 +29,8 @@ public class DiagramOperationController {
     @PostMapping
     public ResponseEntity<OperationExecutionResponse> execute(
             @PathVariable String diagramId,
-            @Valid @RequestBody ExecuteDiagramOperationRequest request) {
+            @Valid @RequestBody ExecuteDiagramOperationRequest request, Authentication authentication) {
         return ResponseEntity.ok(OperationExecutionResponse.from(
-                persistentDiagramOperationService.execute(diagramId, payloadMapper.map(request.getOperation()))));
+                authentication == null ? persistentDiagramOperationService.execute(diagramId, payloadMapper.map(request.getOperation())) : persistentDiagramOperationService.execute(diagramId, payloadMapper.map(request.getOperation()), authentication.getName())));
     }
 }

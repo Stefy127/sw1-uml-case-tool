@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import com.sw1.umltool.features.project.service.ProjectAccessService;
 
 @Service
 public class DiagramService {
@@ -18,6 +19,7 @@ public class DiagramService {
     private final DiagramRepository diagramRepository;
     private final ProjectRepository projectRepository;
     private final DiagramStateSerializer diagramStateSerializer;
+    private final ProjectAccessService access;
 
     public DiagramService(
             DiagramRepository diagramRepository,
@@ -26,7 +28,10 @@ public class DiagramService {
         this.diagramRepository = diagramRepository;
         this.projectRepository = projectRepository;
         this.diagramStateSerializer = diagramStateSerializer;
+        this.access = null;
     }
+    @org.springframework.beans.factory.annotation.Autowired
+    public DiagramService(DiagramRepository repository, ProjectRepository projects, DiagramStateSerializer serializer, ProjectAccessService access) { this.diagramRepository=repository; this.projectRepository=projects; this.diagramStateSerializer=serializer; this.access=access; }
 
     public DiagramEntity createDiagram(String projectId, String name) {
         if (isBlank(projectId)) throw new IllegalArgumentException("Project id is required");
@@ -56,6 +61,9 @@ public class DiagramService {
     public List<DiagramEntity> findByProjectId(String projectId) {
         return diagramRepository.findByProjectId(projectId);
     }
+    public DiagramEntity createDiagram(String projectId,String name,String userId) { access.requireEditor(projectId,userId); return createDiagram(projectId,name); }
+    public List<DiagramEntity> findByProjectId(String projectId,String userId) { access.requireMember(projectId,userId); return findByProjectId(projectId); }
+    public Optional<DiagramEntity> findById(String id,String userId) { access.requireDiagramMember(id,userId); return findById(id); }
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
