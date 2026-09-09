@@ -10,6 +10,7 @@ import { ProjectDetailPageComponent } from './features/projects/pages/project-de
 import { ProjectsPageComponent } from './features/projects/pages/projects/projects-page.component';
 import { SharedPageComponent } from './features/shared/pages/shared/shared-page.component';
 import { TemplatesPageComponent } from './features/templates/pages/templates/templates-page.component';
+import { SharedLinkPageComponent } from './features/shared/pages/shared-link/shared-link-page.component';
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
@@ -27,6 +28,7 @@ export const routes: Routes = [
       { path: 'appearance', component: AppearancePageComponent },
       { path: 'account', component: AccountPageComponent, canActivate: [authGuard] },
       { path: 'shared', component: SharedPageComponent },
+      { path: 'shared/:token', component: SharedLinkPageComponent, canActivate: [authGuard] },
       { path: 'templates', component: TemplatesPageComponent },
     ],
   },

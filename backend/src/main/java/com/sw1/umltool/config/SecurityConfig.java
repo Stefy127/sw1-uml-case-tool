@@ -36,7 +36,7 @@ public class SecurityConfig implements WebMvcConfigurer {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
-                        .requestMatchers("/api/projects/**", "/api/diagrams/**").authenticated()
+                        .requestMatchers("/api/projects/**", "/api/diagrams/**", "/api/shared/**").authenticated()
                         // Existing UML endpoints remain public during this incremental auth rollout.
                         .requestMatchers("/api/**").permitAll()
                         .anyRequest().authenticated());

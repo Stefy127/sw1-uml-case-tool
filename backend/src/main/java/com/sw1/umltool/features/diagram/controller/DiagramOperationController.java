@@ -30,7 +30,9 @@ public class DiagramOperationController {
     public ResponseEntity<OperationExecutionResponse> execute(
             @PathVariable String diagramId,
             @Valid @RequestBody ExecuteDiagramOperationRequest request, Authentication authentication) {
+        var operation = payloadMapper.map(request.getOperation());
+        if (authentication != null) operation.setUserId(authentication.getName());
         return ResponseEntity.ok(OperationExecutionResponse.from(
-                authentication == null ? persistentDiagramOperationService.execute(diagramId, payloadMapper.map(request.getOperation())) : persistentDiagramOperationService.execute(diagramId, payloadMapper.map(request.getOperation()), authentication.getName())));
+                authentication == null ? persistentDiagramOperationService.execute(diagramId, operation) : persistentDiagramOperationService.execute(diagramId, operation, authentication.getName())));
     }
 }

@@ -62,7 +62,7 @@ public class DiagramService {
         return diagramRepository.findByProjectId(projectId);
     }
     public DiagramEntity createDiagram(String projectId,String name,String userId) { access.requireEditor(projectId,userId); return createDiagram(projectId,name); }
-    public List<DiagramEntity> findByProjectId(String projectId,String userId) { access.requireMember(projectId,userId); return findByProjectId(projectId); }
+    public List<DiagramEntity> findByProjectId(String projectId,String userId) { access.requireRead(projectId,userId); return findByProjectId(projectId); }
     public Optional<DiagramEntity> findById(String id,String userId) { access.requireDiagramMember(id,userId); return findById(id); }
 
     private boolean isBlank(String value) {

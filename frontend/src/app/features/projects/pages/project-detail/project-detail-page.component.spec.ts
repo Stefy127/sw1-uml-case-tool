@@ -126,4 +126,41 @@ describe('ProjectDetailPageComponent', () => {
     expect(page.showCreate()).toBe(true);
     expect(page.createError()).toBe('No se pudo crear el diagrama.');
   });
+
+  it('opens the share modal, loads members and closes it', async () => {
+    let requestedProjectId = '';
+    const projectService = {
+      getProjectById: () => of({ id: 'p1', name: 'Demo', description: null, ownerUserId: 'u1', createdAt: '', updatedAt: '' }),
+      getMembers: (projectId: string) => { requestedProjectId = projectId; return of([{ id: 'm1', userId: 'u1', firstName: 'Owner', lastName: 'One', email: 'owner@test.com', role: 'OWNER' as const }]); },
+      getMyRole: () => of({ role: 'OWNER' as const }),
+    };
+    const diagramService = { getDiagramsByProject: () => of([]) };
+    await TestBed.configureTestingModule({
+      imports: [ProjectDetailPageComponent],
+      providers: [
+        { provide: ProjectService, useValue: projectService },
+        { provide: DiagramService, useValue: diagramService },
+        provideRouter([]),
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'p1' } } } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(ProjectDetailPageComponent);
+    await fixture.whenStable();
+    const page = fixture.componentInstance;
+    page.currentUserRole.set('OWNER');
+    fixture.detectChanges();
+    const shareButton = (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find((button) => button.textContent?.includes('Compartir')) as HTMLButtonElement;
+    shareButton.click();
+    fixture.detectChanges();
+
+    expect(page.shareOpen()).toBe(true);
+    expect(requestedProjectId).toBe('p1');
+    expect(fixture.nativeElement.querySelector('.share-panel')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('owner@test.com');
+
+    (fixture.nativeElement.querySelector('.share-panel .close-button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(page.shareOpen()).toBe(false);
+  });
 });

@@ -1,14 +1,66 @@
 import { Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 import { ProjectService } from '../../../projects/services/project.service';
-import { Project } from '../../../projects/models/project.model';
+import { Project, ProjectMemberRole } from '../../../projects/models/project.model';
 
 @Component({
   selector: 'app-shared-page',
   imports: [RouterLink],
-  template: `<div class="page"><span class="eyebrow">Workspace</span><h1>Compartidos conmigo</h1>@if (loading()) { <p class="muted">Cargando proyectos...</p> } @else if (error()) { <p class="error-message">{{ error() }}</p> } @else if (!projects().length) { <p class="muted">No tienes proyectos compartidos.</p> } @else { @for (project of projects(); track project.id) { <article class="card"><h2>{{ project.name }}</h2><p class="muted">{{ project.description || 'Proyecto UML' }}</p><a [routerLink]="['/projects', project.id]">Abrir proyecto</a></article> } }</div>`,
+  templateUrl: './shared-page.component.html',
+  styleUrl: './shared-page.component.scss',
 })
 export class SharedPageComponent {
-  private readonly service = inject(ProjectService); readonly projects=signal<Project[]>([]); readonly loading=signal(true); readonly error=signal('');
-  constructor() { this.service.getSharedProjects().subscribe({next:p=>{this.projects.set(p);this.loading.set(false);},error:()=>{this.error.set('No se pudieron cargar los proyectos compartidos.');this.loading.set(false);}}); }
+  private readonly service = inject(ProjectService);
+  readonly projects = signal<Project[]>([]);
+  readonly roles = signal<Record<string, ProjectMemberRole>>({});
+  readonly loading = signal(true);
+  readonly error = signal('');
+
+  constructor() {
+    this.load();
+  }
+
+  load(): void {
+    this.loading.set(true);
+    this.error.set('');
+    this.service.getSharedProjects().subscribe({
+      next: (projects) => {
+        this.projects.set(projects);
+        if (!projects.length) {
+          this.loading.set(false);
+          return;
+        }
+        forkJoin(projects.map((project) => this.service.getMyRole(project.id).pipe(catchError(() => of(null))))).subscribe({
+          next: (results) => {
+            const roles: Record<string, ProjectMemberRole> = {};
+            results.forEach((result, index) => {
+              if (result) roles[projects[index].id] = result.role;
+            });
+            this.roles.set(roles);
+            this.loading.set(false);
+          },
+          error: () => this.loading.set(false),
+        });
+      },
+      error: () => {
+        this.error.set('No pudimos cargar tus proyectos compartidos.');
+        this.loading.set(false);
+      },
+    });
+  }
+
+  roleLabel(projectId: string): string {
+    return this.roles()[projectId] === 'VIEWER' ? 'Solo lectura' : 'Editor';
+  }
+
+  roleClass(projectId: string): string {
+    return this.roles()[projectId] === 'VIEWER' ? 'viewer' : 'editor';
+  }
+
+  formatDate(value: string): string {
+    if (!value) return 'Actualizado recientemente';
+    return `Actualizado ${new Intl.DateTimeFormat('es-BO', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))}`;
+  }
 }

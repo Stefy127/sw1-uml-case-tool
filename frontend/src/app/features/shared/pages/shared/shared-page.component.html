@@ -1,0 +1,36 @@
+<div class="page shared-page">
+  <header class="shared-heading">
+    <div>
+      <span class="eyebrow">WORKSPACE</span>
+      <h1>Compartidos conmigo</h1>
+      <p>Proyectos a los que otras personas te dieron acceso.</p>
+    </div>
+    @if (!loading() && !error()) {
+      <span class="project-count">{{ projects().length }} {{ projects().length === 1 ? 'proyecto compartido' : 'proyectos compartidos' }}</span>
+    }
+  </header>
+
+  @if (loading()) {
+    <div class="shared-grid" aria-label="Cargando proyectos compartidos">
+      @for (placeholder of [1, 2]; track placeholder) { <div class="shared-card skeleton-card"><div class="skeleton-cover"></div><div class="skeleton-line wide"></div><div class="skeleton-line"></div><div class="skeleton-button"></div></div> }
+    </div>
+  } @else if (error()) {
+    <section class="shared-state error-state"><span class="state-icon">!</span><h2>No pudimos cargar tus proyectos compartidos.</h2><p>Comprueba tu conexión e inténtalo nuevamente.</p><button class="btn btn-primary" type="button" (click)="load()">Reintentar</button></section>
+  } @else if (!projects().length) {
+    <section class="shared-state"><span class="state-icon">◇</span><h2>Nadie ha compartido proyectos contigo todavía.</h2><p>Cuando alguien te agregue como colaborador, aparecerá aquí.</p></section>
+  } @else {
+    <div class="shared-grid">
+      @for (project of projects(); track project.id) {
+        <article class="card shared-card">
+          <div class="shared-cover"><span class="cover-symbol">◇</span><span class="cover-tag">UML</span></div>
+          <div class="shared-body">
+            <div class="shared-title"><h2>{{ project.name }}</h2><span class="shared-menu">•••</span></div>
+            <p class="shared-description">{{ project.description || 'Proyecto UML compartido' }}</p>
+            <div class="shared-meta"><span>Acceso compartido</span><span class="role-badge" [class.viewer]="roleClass(project.id) === 'viewer'">{{ roleLabel(project.id) }}</span></div>
+            <div class="shared-footer"><span class="updated">{{ formatDate(project.updatedAt) }}</span><a class="btn btn-primary open-project" [routerLink]="['/projects', project.id]">Abrir proyecto <span>→</span></a></div>
+          </div>
+        </article>
+      }
+    </div>
+  }
+</div>

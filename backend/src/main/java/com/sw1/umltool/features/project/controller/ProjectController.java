@@ -21,6 +21,9 @@ import com.sw1.umltool.features.project.dto.AddProjectMemberRequest;
 import com.sw1.umltool.features.project.dto.ProjectMemberResponse;
 import com.sw1.umltool.features.project.dto.ProjectRoleResponse;
 import com.sw1.umltool.features.project.model.ProjectMemberRole;
+import com.sw1.umltool.features.project.dto.ShareLinkRequest;
+import com.sw1.umltool.features.project.dto.ShareLinkResponse;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.List;
 
@@ -29,6 +32,7 @@ import java.util.List;
 public class ProjectController {
 
     private final ProjectService projectService;
+    @Value("${app.frontend-url:http://localhost:4200}") private String frontendUrl;
 
     public ProjectController(ProjectService projectService) {
         this.projectService = projectService;
@@ -49,9 +53,10 @@ public class ProjectController {
     }
 
     @GetMapping("/{projectId}")
-    public ResponseEntity<ProjectResponse> findById(@PathVariable String projectId) {
-        return projectService.findById(projectId)
-                .map(project -> ResponseEntity.ok(ProjectMapper.toResponse(project)))
+    public ResponseEntity<ProjectResponse> findById(@PathVariable String projectId, Authentication auth) {
+        var projectResult = auth == null ? projectService.findById(projectId) : projectService.findById(projectId, auth.getName());
+        return projectResult
+                .map(currentProject -> ResponseEntity.ok(ProjectMapper.toResponse(currentProject)))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -61,4 +66,8 @@ public class ProjectController {
     @PostMapping("/{projectId}/members") public ResponseEntity<ProjectMemberResponse> addMember(@PathVariable String projectId, Authentication auth, @Valid @RequestBody AddProjectMemberRequest request) { return ResponseEntity.status(HttpStatus.CREATED).body(projectService.addMember(projectId,auth.getName(),request)); }
     @PutMapping("/{projectId}/members/{memberId}/role") public ProjectMemberResponse changeRole(@PathVariable String projectId,@PathVariable String memberId,Authentication auth,@RequestBody java.util.Map<String,ProjectMemberRole> request) { return projectService.changeRole(projectId,auth.getName(),memberId,request.get("role")); }
     @DeleteMapping("/{projectId}/members/{memberId}") public ResponseEntity<Void> removeMember(@PathVariable String projectId,@PathVariable String memberId,Authentication auth) { projectService.removeMember(projectId,auth.getName(),memberId); return ResponseEntity.noContent().build(); }
+    @GetMapping("/{projectId}/share-link") public ShareLinkResponse shareLink(@PathVariable String projectId, Authentication auth) { return projectService.getShareLink(projectId, auth.getName(), frontendUrl); }
+    @PutMapping("/{projectId}/share-link") public ShareLinkResponse setShareLink(@PathVariable String projectId, Authentication auth, @RequestBody ShareLinkRequest request) { return projectService.shareLink(projectId, auth.getName(), request, frontendUrl); }
+    @PostMapping("/{projectId}/share-link/regenerate") public ShareLinkResponse regenerateShareLink(@PathVariable String projectId, Authentication auth) { return projectService.regenerateShareLink(projectId, auth.getName(), frontendUrl); }
+    @DeleteMapping("/{projectId}/share-link") public ResponseEntity<Void> disableShareLink(@PathVariable String projectId, Authentication auth) { projectService.disableShareLink(projectId, auth.getName()); return ResponseEntity.noContent().build(); }
 }

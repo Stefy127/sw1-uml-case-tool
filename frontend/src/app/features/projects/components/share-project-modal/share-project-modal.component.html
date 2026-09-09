@@ -1,0 +1,15 @@
+@if (open) {
+  <div class="share-backdrop" role="presentation" (click)="close.emit()">
+    <section class="share-panel" role="dialog" aria-modal="true" aria-labelledby="share-title" (click)="$event.stopPropagation()">
+      <div class="panel-heading"><div><h2 id="share-title">Compartir proyecto</h2><p>Administra quién puede ver y editar este espacio.</p></div><button class="close-button" type="button" aria-label="Cerrar" (click)="close.emit()">×</button></div>
+      @if (currentUserRole === 'OWNER') {
+        <div class="member-add"><label for="share-member-email">Agregar colaborador</label><div class="member-add-row"><input id="share-member-email" type="email" [value]="memberEmail()" (input)="memberEmail.set($any($event.target).value)" placeholder="correo@ejemplo.com" /><select [value]="memberRole()" (change)="memberRole.set($any($event.target).value)"><option value="EDITOR">Editor</option><option value="VIEWER">Lector</option></select></div><button class="btn btn-primary" type="button" [disabled]="loading()" (click)="addMember()">Agregar persona</button></div>
+        <div class="link-access"><label for="share-mode">Acceso mediante enlace</label><select id="share-mode" [value]="shareMode()" [disabled]="linkLoading()" (change)="changeShareMode($any($event.target).value)"><option value="RESTRICTED">Restringido · Solo personas agregadas</option><option value="LINK_VIEWER">Cualquiera con el enlace · Lector</option><option value="LINK_EDITOR">Cualquiera con el enlace · Editor</option></select>@if (shareUrl()) { <div class="share-url-row"><input readonly [value]="shareUrl()" /><button class="btn btn-soft" type="button" (click)="copyLink()">Copiar enlace</button><button class="btn btn-ghost" type="button" [disabled]="linkLoading()" (click)="regenerateLink()">Regenerar</button></div> }</div>
+      }
+      <h3 class="members-heading">Personas con acceso</h3>
+      <div class="members-list">@for (member of members(); track member.id) { <div class="member-row"><span class="avatar rose">{{ initials(member) }}</span><span class="member-copy"><b>{{ member.firstName }} {{ member.lastName }}</b><small>{{ member.email }}</small></span>@if (member.role === 'OWNER' || currentUserRole !== 'OWNER') { <span class="member-role">{{ member.role === 'OWNER' ? 'Propietario' : member.role === 'VIEWER' ? 'Solo lectura' : 'Editor' }}</span> } @else { <select class="member-role-select" [value]="member.role" [disabled]="loading()" (change)="changeRole(member, $any($event.target).value)"><option value="EDITOR">Editor</option><option value="VIEWER">Lector</option></select><button class="member-remove" type="button" [disabled]="loading()" (click)="removeMember(member)">Quitar</button> }</div> }</div>
+      @if (error()) { <p class="error-message">{{ error() }}</p> } @if (message()) { <p class="success-message">{{ message() }}</p> }
+      <div class="panel-actions"><button class="btn btn-ghost" type="button" (click)="close.emit()">Cerrar</button></div>
+    </section>
+  </div>
+}

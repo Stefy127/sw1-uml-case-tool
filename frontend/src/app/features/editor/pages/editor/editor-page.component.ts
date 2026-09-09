@@ -33,6 +33,7 @@ import { AiVoiceCommandService } from '../../services/ai-voice-command.service';
 import { Subscription } from 'rxjs';
 import { ProjectMember, ProjectMemberRole } from '../../../projects/models/project.model';
 import { ProjectService } from '../../../projects/services/project.service';
+import { ShareProjectModalComponent } from '../../../projects/components/share-project-modal/share-project-modal.component';
 
 type EditorTool = 'SELECT' | 'CLASS' | 'RELATION';
 type RelationType =
@@ -152,7 +153,7 @@ type RelationPropertyOperation =
 
 @Component({
   selector: 'app-editor-page',
-  imports: [RouterLink, DecimalPipe],
+  imports: [RouterLink, DecimalPipe, ShareProjectModalComponent],
   templateUrl: './editor-page.component.html',
   styleUrl: './editor-page.component.scss',
 })
@@ -183,6 +184,7 @@ export class EditorPageComponent implements OnDestroy {
   readonly currentUserRole = signal<ProjectMemberRole | null>(null);
   readonly projectMembers = signal<ProjectMember[]>([]);
   readonly isReadOnly = computed(() => this.currentUserRole() === 'VIEWER');
+  readonly shareOpen = signal(false);
   readonly pendingRelationDeletion = signal<UmlRelation | null>(null);
   readonly relationMultiplicityDraft = signal<RelationMultiplicityDraft | null>(null);
   readonly relationRolesDraft = signal<RelationRolesDraft | null>(null);
@@ -380,6 +382,8 @@ export class EditorPageComponent implements OnDestroy {
     if (tool !== 'RELATION') this.relationSourceClassId.set(null);
     if (tool !== 'RELATION') this.relationError.set('');
   }
+
+  openShare(): void { this.shareOpen.set(true); }
 
   setRelationTool(type: RelationType): void {
     if (this.isReadOnly()) return;

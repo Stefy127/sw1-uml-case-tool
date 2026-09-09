@@ -10,6 +10,7 @@ import { DiagramService } from '../../services/diagram.service';
 import { XmiImportService } from '../../services/xmi-import.service';
 import { ImageImportService } from '../../services/image-import.service';
 import { EditorPageComponent } from './editor-page.component';
+import { ProjectService } from '../../../projects/services/project.service';
 
 const detail: DiagramDetail = {
   id: 'd1',
@@ -22,7 +23,7 @@ const detail: DiagramDetail = {
   viewState: { diagramId: 'd1', nodes: [], relations: [] },
 };
 
-function configure(operationService: object, current = detail, xmiImport: object = {}, imageImport: object = {}): Promise<void> {
+function configure(operationService: object, current = detail, xmiImport: object = {}, imageImport: object = {}, projectApi: object = { getMyRole: () => of({ role: 'OWNER' }), getMembers: () => of([]) }): Promise<void> {
   return TestBed.configureTestingModule({
     imports: [EditorPageComponent],
     providers: [
@@ -30,6 +31,7 @@ function configure(operationService: object, current = detail, xmiImport: object
       { provide: DiagramOperationService, useValue: operationService },
       { provide: XmiImportService, useValue: { preview: () => NEVER, apply: () => NEVER, ...xmiImport } },
       { provide: ImageImportService, useValue: { preview: () => NEVER, apply: () => NEVER, ...imageImport } },
+      { provide: ProjectService, useValue: projectApi },
       provideRouter([]),
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'd1' } } } },
     ],
@@ -72,6 +74,24 @@ describe('EditorPageComponent', () => {
     expect(page.voiceDialogOpen()).toBe(true);
     expect(page.activeTool()).toBe('CLASS');
     page.closeVoiceDialog();
+  });
+
+  it('opens the share modal from the editor for an owner and loads members', async () => {
+    let memberRequests = 0;
+    await configure({ execute: () => NEVER }, detail, {}, {}, {
+      getMyRole: () => of({ role: 'OWNER' }),
+      getMembers: () => { memberRequests++; return of([{ id: 'm1', userId: 'u1', firstName: 'Owner', lastName: 'One', email: 'owner@test.com', role: 'OWNER' }]); },
+    });
+    const fixture = TestBed.createComponent(EditorPageComponent);
+    await fixture.whenStable();
+    fixture.componentInstance.openShare();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.shareOpen()).toBe(true);
+    expect(memberRequests).toBeGreaterThan(0);
+    expect(fixture.nativeElement.querySelector('app-share-project-modal .share-panel')).not.toBeNull();
+    (fixture.nativeElement.querySelector('app-share-project-modal .close-button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.shareOpen()).toBe(false);
   });
 
   function diagramWithClass(): DiagramDetail {

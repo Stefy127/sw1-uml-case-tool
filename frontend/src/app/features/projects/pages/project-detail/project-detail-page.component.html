@@ -1,154 +1,22 @@
 <div class="page detail">
-  <a routerLink="/projects" class="back">←　Mis proyectos</a>
+  <a routerLink="/projects" class="back">← Mis proyectos</a>
   @if (loading()) {
     <p class="muted state-message">Cargando proyecto...</p>
   } @else if (error()) {
     <p class="error-message state-message">{{ error() }}</p>
   } @else if (project(); as currentProject) {
-    <div class="detail-heading">
-      <div class="title-line">
-        <span class="project-symbol">◇</span>
-        <div>
-          <h1>{{ currentProject.name }}</h1>
-          <p class="muted">{{ currentProject.description || 'Espacio de trabajo UML' }}</p>
-        </div>
-      </div>
-      <div class="detail-actions">
-        @if (currentUserRole() === 'OWNER') { <button class="btn btn-soft" type="button" (click)="openShare()">Compartir</button> }
-        <button class="btn btn-soft">♧　Compartir</button
-        ><a [routerLink]="['/editor', diagrams()[0]?.id]" class="btn btn-primary"
-          >⌁　Abrir editor</a
-        >
-      </div>
-    </div>
+    <div class="detail-heading"><div class="title-line"><span class="project-symbol">◇</span><div><h1>{{ currentProject.name }}</h1><p class="muted">{{ currentProject.description || 'Espacio de trabajo UML' }}</p></div></div><div class="detail-actions"><button class="btn btn-soft" type="button" (click)="openShare()">♧ Compartir</button><a [routerLink]="['/editor', diagrams()[0]?.id]" class="btn btn-primary">Abrir editor</a></div></div>
     <div class="detail-layout">
       <section>
-        <div class="diagram-preview">
-          <div class="mini-class one">
-            <b>Usuario</b><span>+ nombre: String</span><span>+ prestar()</span>
-          </div>
-          <div class="mini-class two">
-            <b>Libro</b><span>+ título: String</span><span>+ disponible: Bool</span>
-          </div>
-          <div class="mini-class three"><b>Préstamo</b><span>+ fecha: Date</span></div>
-          <i class="line l1"></i><i class="line l2"></i>
-        </div>
-        <div class="diagram-list">
-          <div class="list-heading">
-            <div>
-              <h2>Diagramas del proyecto</h2>
-              <p class="muted">Explora y continúa trabajando en tu modelo</p>
-            </div>
-            <button class="btn btn-primary" (click)="showCreate.set(true)">
-              ＋ Nuevo diagrama
-            </button>
-          </div>
-          @if (diagrams().length === 0) {
-            <div class="empty-diagrams">
-              <span class="empty-icon">◇</span>
-              <h3>Aún no hay diagramas</h3>
-              <p class="muted">Crea el primero para comenzar a modelar tu sistema.</p>
-              <button class="btn btn-soft" (click)="showCreate.set(true)">Nuevo diagrama</button>
-            </div>
-          }
-          @for (diagram of diagrams(); track diagram.id) {
-            <a class="diagram-row" [routerLink]="['/editor', diagram.id]"
-              ><span class="diagram-icon">◇</span
-              ><span
-                ><strong>{{ diagram.name }}</strong
-                ><small>Versión {{ diagram.version }}</small></span
-              ><span class="row-arrow">›</span></a
-            >
-          }
+        <div class="diagram-preview"><div class="mini-class one"><b>Usuario</b><span>+ nombre: String</span><span>+ prestar()</span></div><div class="mini-class two"><b>Libro</b><span>+ título: String</span><span>+ disponible: Bool</span></div><div class="mini-class three"><b>Préstamo</b><span>+ fecha: Date</span></div><i class="line l1"></i><i class="line l2"></i></div>
+        <div class="diagram-list"><div class="list-heading"><div><h2>Diagramas del proyecto</h2><p class="muted">Explora y continúa trabajando en tu modelo</p></div><button class="btn btn-primary" (click)="showCreate.set(true)">＋ Nuevo diagrama</button></div>
+          @if (diagrams().length === 0) { <div class="empty-diagrams"><span class="empty-icon">◇</span><h3>Aún no hay diagramas</h3><p class="muted">Crea el primero para comenzar a modelar tu sistema.</p><button class="btn btn-soft" (click)="showCreate.set(true)">Nuevo diagrama</button></div> }
+          @for (diagram of diagrams(); track diagram.id) { <a class="diagram-row" [routerLink]="['/editor', diagram.id]"><span class="diagram-icon">◇</span><span><strong>{{ diagram.name }}</strong><small>Versión {{ diagram.version }}</small></span><span class="row-arrow">›</span></a> }
         </div>
       </section>
-      <aside class="side-cards">
-        <div class="card collaborators">
-          <div class="side-title">
-            <h3>Colaboradores</h3>
-            @for (member of members(); track member.id) { <div class="person real-person"><span class="avatar rose">{{ memberInitials(member) }}</span><span><b>{{ member.firstName }} {{ member.lastName }}</b><small>{{ member.role }}</small></span><i class="online"></i></div> }
-            <span>♧</span>
-          </div>
-          <div class="person">
-            <span class="avatar rose">SW</span
-            ><span><b>Usuario actual</b><small>Propietario</small></span
-            ><i class="online"></i>
-          </div>
-        </div>
-        <div class="card activity">
-          <h3>Actividad del proyecto</h3>
-          <p><b>＋</b> Proyecto creado<small>Reciente</small></p>
-          <p>
-            <b>⌁</b> Modelos disponibles<small>{{ diagrams().length }} diagramas</small>
-          </p>
-        </div>
-      </aside>
+      <aside class="side-cards"><div class="card collaborators"><div class="side-title"><h3>Colaboradores</h3><span>♧</span></div>@for (member of members(); track member.id) { <div class="person"><span class="avatar rose">{{ memberInitials(member) }}</span><span><b>{{ member.firstName }} {{ member.lastName }}</b><small>{{ member.role }}</small></span><i class="online"></i></div> }</div><div class="card activity"><h3>Actividad del proyecto</h3><p><b>＋</b> Proyecto creado<small>Reciente</small></p><p><b>⌁</b> Modelos disponibles<small>{{ diagrams().length }} diagramas</small></p></div></aside>
     </div>
   }
-  @if (shareOpen()) {
-    <div class="modal-backdrop share-backdrop" role="presentation" (click)="shareOpen.set(false)">
-      <section class="share-panel" role="dialog" aria-modal="true" aria-labelledby="share-title" (click)="$event.stopPropagation()">
-        <div class="panel-heading"><div><h2 id="share-title">Compartir proyecto</h2><p>Administra quién puede ver y editar este espacio.</p></div><button class="close-button" type="button" aria-label="Cerrar" (click)="shareOpen.set(false)">×</button></div>
-        <div class="member-add"><label for="member-email">Agregar colaborador</label><div class="member-add-row"><input id="member-email" type="email" [value]="memberEmail()" (input)="memberEmail.set($any($event.target).value)" placeholder="correo@ejemplo.com" /><select [value]="memberRole()" (change)="memberRole.set($any($event.target).value)"><option value="EDITOR">Editor</option><option value="VIEWER">Lector</option></select></div><button class="btn btn-primary" type="button" [disabled]="memberLoading()" (click)="addMember()">Agregar</button></div>
-        <h3 class="members-heading">Personas con acceso</h3>
-        <div class="members-list">@for (member of members(); track member.id) { <div class="member-row"><span class="avatar rose">{{ memberInitials(member) }}</span><span class="member-copy"><b>{{ member.firstName }} {{ member.lastName }}</b><small>{{ member.email }}</small></span>@if (member.role === 'OWNER') { <span class="member-role">Propietario</span> } @else { <select class="member-role-select" [value]="member.role" [disabled]="memberLoading()" (change)="changeMemberRole(member, $any($event.target).value)"><option value="EDITOR">Editor</option><option value="VIEWER">Lector</option></select><button class="member-remove" type="button" [disabled]="memberLoading()" (click)="removeMember(member)">Quitar</button> }</div> }</div>
-        @if (memberError()) { <p class="error-message">{{ memberError() }}</p> } @if (memberMessage()) { <p class="success-message">{{ memberMessage() }}</p> }
-        <div class="panel-actions"><button class="btn btn-ghost" type="button" (click)="shareOpen.set(false)">Cerrar</button></div>
-      </section>
-    </div>
-  }
-  @if (showCreate()) {
-    <div class="modal-backdrop" role="presentation">
-      <section
-        class="create-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-diagram-title"
-      >
-        <div class="modal-icon">◇</div>
-        <div class="panel-heading">
-          <div>
-            <h2 id="create-diagram-title">Nuevo diagrama</h2>
-            <p>Crea un nuevo diagrama UML dentro de este proyecto.</p>
-          </div>
-          <button
-            class="close-button"
-            type="button"
-            aria-label="Cerrar"
-            (click)="showCreate.set(false)"
-          >
-            ×
-          </button>
-        </div>
-        <label for="diagram-name">Nombre del diagrama</label>
-        <input
-          id="diagram-name"
-          [value]="createName()"
-          (input)="createName.set($any($event.target).value)"
-          placeholder="Ej. Diagrama principal"
-        />
-        @if (createError()) {
-          <p class="error-message">{{ createError() }}</p>
-        }
-        <div class="panel-actions">
-          <button
-            class="btn btn-ghost"
-            type="button"
-            [disabled]="creating()"
-            (click)="showCreate.set(false)"
-          >
-            Cancelar
-          </button>
-          <button
-            class="btn btn-primary"
-            type="button"
-            [disabled]="creating() || !createName().trim()"
-            (click)="createDiagram()"
-          >
-            {{ creating() ? 'Creando...' : 'Crear diagrama' }}
-          </button>
-        </div>
-      </section>
-    </div>
-  }
+  <app-share-project-modal [projectId]="projectId" [currentUserRole]="currentUserRole()" [open]="shareOpen()" (close)="shareOpen.set(false)" (membersChanged)="members.set($event)"></app-share-project-modal>
+  @if (showCreate()) { <div class="modal-backdrop" role="presentation"><section class="create-panel" role="dialog" aria-modal="true" aria-labelledby="create-diagram-title"><div class="modal-icon">◇</div><div class="panel-heading"><div><h2 id="create-diagram-title">Nuevo diagrama</h2><p>Crea un nuevo diagrama UML dentro de este proyecto.</p></div><button class="close-button" type="button" aria-label="Cerrar" (click)="showCreate.set(false)">×</button></div><label for="diagram-name">Nombre del diagrama</label><input id="diagram-name" [value]="createName()" (input)="createName.set($any($event.target).value)" placeholder="Ej. Diagrama principal" />@if (createError()) { <p class="error-message">{{ createError() }}</p> }<div class="panel-actions"><button class="btn btn-ghost" type="button" [disabled]="creating()" (click)="showCreate.set(false)">Cancelar</button><button class="btn btn-primary" type="button" [disabled]="creating() || !createName().trim()" (click)="createDiagram()">{{ creating() ? 'Creando...' : 'Crear diagrama' }}</button></div></section></div> }
 </div>

@@ -10,7 +10,9 @@
     <div class="editor-actions">
       @if (isReadOnly()) { <span class="read-only-badge">Solo lectura</span> }
       @for (member of projectMembers().slice(0, 3); track member.id) { <span class="avatar rose real-collaborator" [title]="member.firstName + ' ' + member.lastName">{{ member.firstName[0] }}{{ member.lastName[0] }}</span> }
-      <button class="btn btn-soft">♧ Compartir</button>
+      @if (currentUserRole() === 'OWNER') {
+        <button class="btn btn-soft" type="button" (click)="openShare()">♧ Compartir</button>
+      }
       <button class="btn btn-primary">&lt;/&gt; Generar backend</button>
     </div>
   </header>
@@ -939,3 +941,10 @@
     </div>
   }
 </div>
+<app-share-project-modal
+  [projectId]="diagram()?.projectId ?? ''"
+  [currentUserRole]="currentUserRole()"
+  [open]="shareOpen()"
+  (close)="shareOpen.set(false)"
+  (membersChanged)="projectMembers.set($event)"
+></app-share-project-modal>
