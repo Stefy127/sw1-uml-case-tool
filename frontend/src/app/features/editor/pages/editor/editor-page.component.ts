@@ -187,6 +187,7 @@ export class EditorPageComponent implements OnDestroy {
   readonly projectMembers = signal<ProjectMember[]>([]);
   readonly onlineCollaborators = signal<string[]>([]);
   readonly collaborationStatus = computed(() => this.collaboration?.status() ?? 'DISCONNECTED');
+  readonly presenceOpen = signal(false);
   readonly isReadOnly = computed(() => this.currentUserRole() === 'VIEWER');
   readonly shareOpen = signal(false);
   readonly pendingRelationDeletion = signal<UmlRelation | null>(null);
@@ -410,6 +411,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   openShare(): void { this.shareOpen.set(true); }
+  togglePresence(): void { this.presenceOpen.update((open) => !open); }
 
   setRelationTool(type: RelationType): void {
     if (this.isReadOnly()) return;

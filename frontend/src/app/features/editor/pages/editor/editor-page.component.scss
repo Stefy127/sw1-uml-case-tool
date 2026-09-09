@@ -51,6 +51,7 @@
 .editor-actions .avatar + .avatar {
   margin-left: -12px;
 }
+.real-collaborator { display: none; }
 .editor-body {
   display: flex;
   min-height: 0;
@@ -114,14 +115,7 @@
   cursor: crosshair;
 }
 .live {
-  position: absolute;
-  top: 23px;
-  left: 25px;
-  padding: 10px 13px;
-  border-radius: 10px;
-  color: var(--color-primary);
-  background: var(--color-primary-soft);
-  font-size: 12px;
+  display: none;
 }
 .live:first-letter {
   color: var(--color-success);

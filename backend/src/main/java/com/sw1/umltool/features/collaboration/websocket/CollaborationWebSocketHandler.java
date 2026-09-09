@@ -9,6 +9,7 @@ import com.sw1.umltool.features.diagram.repository.DiagramRepository;
 import com.sw1.umltool.features.diagram.service.PersistentDiagramOperationService;
 import com.sw1.umltool.features.project.model.ProjectMemberRole;
 import com.sw1.umltool.features.project.service.ProjectAccessService;
+import com.sw1.umltool.features.auth.repository.UserRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -32,6 +33,7 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper;
     private final DiagramRepository diagrams;
     private final ProjectAccessService access;
+    private final UserRepository users;
     private final PersistentDiagramOperationService operations;
     private final DiagramOperationPayloadMapper payloadMapper;
     private final Map<String, Set<WebSocketSession>> sessionsByDiagram = new ConcurrentHashMap<>();
@@ -39,11 +41,13 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
 
     public CollaborationWebSocketHandler(ObjectMapper objectMapper, DiagramRepository diagrams,
                                          ProjectAccessService access,
+                                         UserRepository users,
                                          PersistentDiagramOperationService operations,
                                          DiagramOperationPayloadMapper payloadMapper) {
         this.objectMapper = objectMapper;
         this.diagrams = diagrams;
         this.access = access;
+        this.users = users;
         this.operations = operations;
         this.payloadMapper = payloadMapper;
     }
@@ -125,7 +129,16 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
     private void broadcastPresence(String diagramId) throws IOException {
         Set<WebSocketSession> sessions = sessionsByDiagram.getOrDefault(diagramId, Set.of());
         Map<String, Map<String, Object>> unique = new ConcurrentHashMap<>();
-        for (WebSocketSession session : sessions) unique.put(userId(session), Map.of("userId", userId(session)));
+        var diagram = diagrams.findById(diagramId).orElse(null);
+        for (WebSocketSession session : sessions) {
+            String userId = userId(session);
+            ProjectMemberRole role = diagram == null ? null : access.resolveRole(diagram.getProjectId(), userId);
+            var user = users.findById(userId).orElse(null);
+            unique.put(userId, Map.of("userId", userId,
+                    "firstName", user == null ? "" : user.getFirstName(),
+                    "lastName", user == null ? "" : user.getLastName(),
+                    "role", role == null ? "VIEWER" : role.name()));
+        }
         sendToSessions(sessions, Map.of("type", "PRESENCE", "diagramId", diagramId, "users", new ArrayList<>(unique.values())));
     }
 

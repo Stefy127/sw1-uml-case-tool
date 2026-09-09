@@ -494,3 +494,12 @@ h3 {
   font-size: 11px;
 }
 
+.presence-trigger { position:absolute; top:23px; left:25px; padding:10px 13px; border:0; border-radius:10px; color:var(--color-primary); background:var(--color-primary-soft); font-size:12px; cursor:pointer; }
+.presence-trigger:first-letter { color:var(--color-success); }
+.presence-popover { position:absolute; z-index:20; top:63px; left:25px; width:260px; padding:10px; border:1px solid var(--color-border); border-radius:12px; background:var(--color-surface); box-shadow:0 12px 28px rgb(38 31 82 / 14%); }
+.presence-user { display:flex; align-items:center; gap:8px; padding:7px; color:var(--color-text); font-size:12px; }
+.presence-user span:nth-child(2) { display:grid; flex:1; }
+.presence-user small,.presence-user i { color:var(--color-text-muted); font-size:11px; font-style:normal; }
+.presence-user i { color:var(--color-success); }
+.presence-trigger:hover { filter:brightness(.98); }
+

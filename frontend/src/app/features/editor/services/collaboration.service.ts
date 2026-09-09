@@ -4,12 +4,15 @@ import { API_BASE_URL } from '../../../core/config/api.config';
 import { ExecuteDiagramOperationRequest, OperationExecutionResponse } from '../models/diagram-operation.model';
 
 export type CollaborationStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING' | 'ERROR';
-export interface CollaborationEvent { type: string; diagramId?: string; operationId?: string; reason?: string; serverVersion?: number; version?: number; users?: Array<{ userId: string }>; result?: OperationExecutionResponse; }
+export interface OnlineUser { userId: string; firstName: string; lastName: string; role: 'OWNER' | 'EDITOR' | 'VIEWER'; }
+export interface CollaborationEvent { type: string; diagramId?: string; operationId?: string; reason?: string; serverVersion?: number; version?: number; users?: OnlineUser[]; result?: OperationExecutionResponse; }
 
 @Injectable({ providedIn: 'root' })
 export class CollaborationService {
   readonly status = signal<CollaborationStatus>('DISCONNECTED');
   readonly joined = signal(false);
+  readonly onlineUsers = signal<OnlineUser[]>([]);
+  readonly onlineCount = () => this.onlineUsers().length;
   readonly events = new Subject<CollaborationEvent>();
   private socket: WebSocket | null = null;
   private diagramId = '';
@@ -24,6 +27,7 @@ export class CollaborationService {
     this.knownVersion = knownVersion;
     this.joined.set(false);
     this.needsResync = false;
+    this.onlineUsers.set([]);
     this.closeSocket(false);
     const token = localStorage.getItem('sw1.auth.token');
     if (!token || typeof WebSocket === 'undefined') { this.status.set('ERROR'); return; }
@@ -51,6 +55,7 @@ export class CollaborationService {
     this.closeSocket(true);
     this.status.set('DISCONNECTED');
     this.joined.set(false);
+    this.onlineUsers.set([]);
     for (const pending of this.pending.values()) pending.reject(new Error('WebSocket disconnected'));
     this.pending.clear();
   }
@@ -87,6 +92,10 @@ export class CollaborationService {
       this.needsResync = true;
       this.joined.set(false);
       if (message.serverVersion !== undefined) this.knownVersion = message.serverVersion;
+    }
+    if (message.type === 'PRESENCE') {
+      const unique = new Map((message.users ?? []).map((user) => [user.userId, user]));
+      this.onlineUsers.set([...unique.values()]);
     }
     if (message.type === 'OPERATION_REJECTED' && message.operationId) {
       const pending = this.pending.get(message.operationId);

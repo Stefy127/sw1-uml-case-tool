@@ -10,6 +10,7 @@
     <div class="editor-actions">
       @if (isReadOnly()) { <span class="read-only-badge">Solo lectura</span> }
       @for (member of projectMembers().slice(0, 3); track member.id) { <span class="avatar rose real-collaborator" [title]="member.firstName + ' ' + member.lastName">{{ member.firstName[0] }}{{ member.lastName[0] }}</span> }
+      @for (member of collaboration?.onlineUsers?.() ?? []; track member.userId) { <span class="avatar rose online-collaborator" [title]="member.firstName + ' ' + member.lastName">{{ member.firstName[0] }}{{ member.lastName[0] }}</span> }
       @if (currentUserRole() === 'OWNER') {
         <button class="btn btn-soft" type="button" (click)="openShare()">♧ Compartir</button>
       }
@@ -62,6 +63,16 @@
         <button class="btn btn-ghost" type="button" title="Acercar" (click)="zoomIn()">+</button>
         <button class="btn btn-ghost" type="button" title="Ajustar al contenido" (click)="fitToContent($event)">Ajustar</button>
       </div>
+      <button class="presence-trigger" type="button" (click)="togglePresence()" [attr.aria-expanded]="presenceOpen()">
+        ● {{ collaborationStatus() === 'CONNECTED' && collaboration?.joined() ? 'En vivo' : collaborationStatus() === 'CONNECTING' ? 'Conectando…' : collaborationStatus() === 'RECONNECTING' ? 'Reconectando…' : collaborationStatus() === 'ERROR' ? 'Error de conexión' : 'Sin conexión' }} · {{ collaboration?.onlineCount?.() ?? 0 }} colaboradores
+      </button>
+      @if (presenceOpen()) {
+        <div class="presence-popover" (click)="$event.stopPropagation()">
+          @for (user of collaboration?.onlineUsers?.() ?? []; track user.userId) {
+            <div class="presence-user"><span class="avatar rose">{{ user.firstName[0] }}{{ user.lastName[0] }}</span><span><b>{{ user.firstName }} {{ user.lastName }}</b><small>{{ user.role === 'OWNER' ? 'Propietario' : user.role === 'EDITOR' ? 'Editor' : 'Lector' }}</small></span><i>En línea</i></div>
+          }
+        </div>
+      }
       @if (loading()) {
         <div class="canvas-state">Cargando diagrama...</div>
       } @else if (error()) {
