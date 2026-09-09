@@ -22,6 +22,7 @@ import {
   AssociationClassLink,
 } from '../../models/diagram.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
+import { CollaborationService } from '../../services/collaboration.service';
 import { DiagramService } from '../../services/diagram.service';
 import { XmiImportService } from '../../services/xmi-import.service';
 import { ImageImportService } from '../../services/image-import.service';
@@ -161,6 +162,7 @@ export class EditorPageComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly diagramService = inject(DiagramService);
   private readonly operationService = inject(DiagramOperationService);
+  readonly collaboration = inject(CollaborationService, { optional: true });
   private readonly xmiImportService = inject(XmiImportService);
   private readonly imageImportService = inject(ImageImportService);
   private readonly voiceParser = inject(VoiceCommandParserService);
@@ -183,6 +185,8 @@ export class EditorPageComponent implements OnDestroy {
   readonly relationError = signal('');
   readonly currentUserRole = signal<ProjectMemberRole | null>(null);
   readonly projectMembers = signal<ProjectMember[]>([]);
+  readonly onlineCollaborators = signal<string[]>([]);
+  readonly collaborationStatus = computed(() => this.collaboration?.status() ?? 'DISCONNECTED');
   readonly isReadOnly = computed(() => this.currentUserRole() === 'VIEWER');
   readonly shareOpen = signal(false);
   readonly pendingRelationDeletion = signal<UmlRelation | null>(null);
@@ -228,6 +232,7 @@ export class EditorPageComponent implements OnDestroy {
   readonly voiceError = signal('');
   readonly aiParsing = signal(false);
   private voiceSubscription?: Subscription;
+  private collaborationSubscription?: Subscription;
   readonly selectedClass = computed(() => {
     const umlClass = this.diagram()?.canonicalModel.classes.find(
       (candidate) => candidate.id === this.selectedClassId(),
@@ -358,6 +363,23 @@ export class EditorPageComponent implements OnDestroy {
     this.diagramService.getDiagramById(this.diagramId).subscribe({
       next: (diagram) => {
         this.diagram.set(diagram);
+        this.collaboration?.connect(diagram.id, diagram.version);
+        this.collaborationSubscription = this.collaboration?.events.subscribe((event) => {
+          if (event.type === 'OPERATION_APPLIED' && event.result && event.result.operationId !== undefined) {
+            const current = this.diagram();
+            if (!current || event.result.operationId === this.lastLocalOperationId) return;
+            if (event.result.newVersion <= current.version) return;
+            if (event.result.newVersion !== current.version + 1) {
+              this.diagramService.getDiagramById(this.diagramId).subscribe((latest) => this.diagram.set(latest));
+              return;
+            }
+            console.debug('[WS APPLY REMOTE]', event.result.operationId, event.result.newVersion);
+            this.applyOperationResponse(event.result);
+          }
+          if (event.type === 'RESYNC_REQUIRED') this.diagramService.getDiagramById(this.diagramId).subscribe((current) => { this.diagram.set(current); this.collaboration?.markResynced(current.version); });
+          if (event.type === 'OPERATION_REJECTED' && event.reason === 'VERSION_CONFLICT') this.diagramService.getDiagramById(this.diagramId).subscribe((current) => { this.diagram.set(current); this.collaboration?.markResynced(current.version); });
+          if (event.type === 'PRESENCE') this.onlineCollaborators.set((event.users ?? []).map((user) => user.userId));
+        });
         if (this.projectService) {
           this.projectService.getMyRole(diagram.projectId).subscribe({ next: (role) => this.currentUserRole.set(role.role), error: () => this.currentUserRole.set(null) });
           this.projectService.getMembers(diagram.projectId).subscribe({ next: (members) => this.projectMembers.set(members), error: () => this.projectMembers.set([]) });
@@ -373,8 +395,12 @@ export class EditorPageComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.voiceSubscription?.unsubscribe();
+    this.collaborationSubscription?.unsubscribe();
+    this.collaboration?.disconnect();
     this.voiceRecognition.stop();
   }
+
+  private lastLocalOperationId: string | null = null;
 
   setActiveTool(tool: EditorTool): void {
     if (this.isReadOnly() && tool !== 'SELECT') return;

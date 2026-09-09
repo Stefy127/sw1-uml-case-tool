@@ -55,7 +55,7 @@
       (pointercancel)="onCanvasPointerCancel($event)"
       (wheel)="onCanvasWheel($event)"
     >
-      <div class="live">● En vivo · 2 colaboradores</div>
+      <div class="live">● {{ collaborationStatus() === 'CONNECTED' ? 'En vivo' : 'Desconectado' }} · {{ onlineCollaborators().length }} colaboradores</div>
       <div class="canvas-actions viewport-controls" (click)="$event.stopPropagation()">
         <button class="btn btn-ghost" type="button" title="Alejar" (click)="zoomOut()">−</button>
         <button class="btn btn-ghost" type="button" title="Restablecer zoom" (click)="resetZoom()">{{ zoomPercent() }}%</button>
