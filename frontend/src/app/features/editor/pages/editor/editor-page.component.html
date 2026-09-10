@@ -14,6 +14,7 @@
       @if (currentUserRole() === 'OWNER') {
         <button class="btn btn-soft" type="button" (click)="openShare()">♧ Compartir</button>
       }
+      <app-export-menu [diagramId]="diagramId" />
       <button class="btn btn-primary">&lt;/&gt; Generar backend</button>
     </div>
   </header>

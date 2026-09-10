@@ -99,7 +99,9 @@ public class XmiParser {
                 String target = resolveReference(targetEnd, ids);
                 if (source == null || target == null) { warnings.add("Asociación con referencia de clase no resuelta"); continue; }
                 RelationType type = "composite".equals(sourceEnd.getAttribute("aggregation")) ? RelationType.COMPOSITION
-                        : "shared".equals(sourceEnd.getAttribute("aggregation")) ? RelationType.AGGREGATION : RelationType.ASSOCIATION;
+                        : "composite".equals(targetEnd.getAttribute("aggregation")) ? RelationType.COMPOSITION
+                        : "shared".equals(sourceEnd.getAttribute("aggregation")) || "shared".equals(targetEnd.getAttribute("aggregation")) ? RelationType.AGGREGATION
+                        : RelationType.ASSOCIATION;
                 String relationId = UUID.randomUUID().toString();
                 relations.add(UmlRelation.builder().id(relationId).sourceClassId(source).targetClassId(target).type(type)
                         .sourceMultiplicity(multiplicity(sourceEnd)).targetMultiplicity(multiplicity(targetEnd))

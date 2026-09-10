@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -22,5 +22,8 @@ export class DiagramService {
 
   createDiagram(projectId: string, name: string): Observable<DiagramDetail> {
     return this.http.post<DiagramDetail>(this.diagramsUrl, { projectId, name });
+  }
+  exportXmi(diagramId: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.diagramsUrl}/${diagramId}/export/xmi`, { observe: 'response', responseType: 'blob' });
   }
 }

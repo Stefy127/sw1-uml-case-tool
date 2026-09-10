@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.core.Authentication;
+import com.sw1.umltool.features.importexport.service.XmiExportService;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 
 import java.util.List;
 
@@ -26,10 +29,12 @@ public class DiagramController {
 
     private final DiagramService diagramService;
     private final DiagramStateSerializer diagramStateSerializer;
+    private final XmiExportService xmiExportService;
 
-    public DiagramController(DiagramService diagramService, DiagramStateSerializer diagramStateSerializer) {
+    public DiagramController(DiagramService diagramService, DiagramStateSerializer diagramStateSerializer, XmiExportService xmiExportService) {
         this.diagramService = diagramService;
         this.diagramStateSerializer = diagramStateSerializer;
+        this.xmiExportService = xmiExportService;
     }
 
     @PostMapping
@@ -56,4 +61,17 @@ public class DiagramController {
     private DiagramDetailResponse toDetail(com.sw1.umltool.features.diagram.model.persistence.DiagramEntity entity) {
         return DiagramMapper.toDetail(entity, diagramStateSerializer);
     }
+
+    @GetMapping(value = "/{diagramId}/export/xmi", produces = MediaType.APPLICATION_XML_VALUE)
+    public ResponseEntity<byte[]> exportXmi(@PathVariable String diagramId, Authentication authentication) {
+        if (authentication == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return diagramService.findById(diagramId, authentication.getName())
+                .map(entity -> ResponseEntity.ok()
+                        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + safeFilename(entity.getName()) + ".xmi\"")
+                        .contentType(MediaType.APPLICATION_XML)
+                        .body(xmiExportService.export(entity.getId(), entity.getCanonicalModelJson(), entity.getViewStateJson())))
+                .orElseGet(() -> ResponseEntity.<byte[]>notFound().build());
+    }
+
+    private String safeFilename(String value) { return (value == null ? "diagrama" : value).replaceAll("[^A-Za-z0-9 _-]", "_").trim().replaceAll(" +", "_"); }
 }

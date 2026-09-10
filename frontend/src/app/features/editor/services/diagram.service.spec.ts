@@ -38,4 +38,12 @@ describe('DiagramService', () => {
     expect(request.request.body).toEqual({ projectId: 'project-1', name: 'Class model' });
     request.flush({});
   });
+
+  it('exports a diagram as XMI blob', () => {
+    service.exportXmi('diagram-1').subscribe();
+    const request = http.expectOne(`${API_BASE_URL}/diagrams/diagram-1/export/xmi`);
+    expect(request.request.method).toBe('GET');
+    expect(request.request.responseType).toBe('blob');
+    request.flush(new Blob(['<xmi:XMI/>'], { type: 'application/xml' }), { status: 200, statusText: 'OK' });
+  });
 });

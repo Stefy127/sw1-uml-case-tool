@@ -35,6 +35,7 @@ import { Subscription } from 'rxjs';
 import { ProjectMember, ProjectMemberRole } from '../../../projects/models/project.model';
 import { ProjectService } from '../../../projects/services/project.service';
 import { ShareProjectModalComponent } from '../../../projects/components/share-project-modal/share-project-modal.component';
+import { ExportMenuComponent } from '../../components/export-menu/export-menu.component';
 
 type EditorTool = 'SELECT' | 'CLASS' | 'RELATION';
 type RelationType =
@@ -154,7 +155,7 @@ type RelationPropertyOperation =
 
 @Component({
   selector: 'app-editor-page',
-  imports: [RouterLink, DecimalPipe, KeyValuePipe, ShareProjectModalComponent],
+  imports: [RouterLink, DecimalPipe, KeyValuePipe, ShareProjectModalComponent, ExportMenuComponent],
   templateUrl: './editor-page.component.html',
   styleUrl: './editor-page.component.scss',
 })

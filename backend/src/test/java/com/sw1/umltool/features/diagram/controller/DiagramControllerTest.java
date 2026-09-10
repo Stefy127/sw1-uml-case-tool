@@ -6,6 +6,7 @@ import com.sw1.umltool.features.diagram.model.persistence.DiagramEntity;
 import com.sw1.umltool.features.diagram.model.view.DiagramViewState;
 import com.sw1.umltool.features.diagram.service.DiagramService;
 import com.sw1.umltool.features.diagram.service.DiagramStateSerializer;
+import com.sw1.umltool.features.importexport.service.XmiExportService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -26,13 +27,15 @@ class DiagramControllerTest {
 
     private DiagramService diagramService;
     private DiagramStateSerializer serializer;
+    private XmiExportService xmiExportService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         diagramService = mock(DiagramService.class);
         serializer = mock(DiagramStateSerializer.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new DiagramController(diagramService, serializer))
+        xmiExportService = mock(XmiExportService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new DiagramController(diagramService, serializer, xmiExportService))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         when(serializer.deserializeCanonical("canonical-json")).thenReturn(UmlDiagram.builder()
                 .id("diagram-1").name("Main").build());

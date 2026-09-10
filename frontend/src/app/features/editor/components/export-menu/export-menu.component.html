@@ -1,0 +1,9 @@
+<div class="export-menu">
+  <button class="btn btn-soft" type="button" aria-haspopup="menu" [attr.aria-expanded]="open()" (click)="toggle()">⇩ Exportar</button>
+  @if (open()) {
+    <div class="export-popover" role="menu">
+      <button type="button" role="menuitem" [disabled]="loading()" (click)="exportXmi()">{{ loading() ? 'Exportando…' : 'XMI / Enterprise Architect' }}</button>
+      @if (error()) { <small>{{ error() }}</small> }
+    </div>
+  }
+</div>

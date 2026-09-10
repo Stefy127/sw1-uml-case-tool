@@ -5,6 +5,7 @@ import com.sw1.umltool.features.diagram.operation.VersionConflictException;
 import com.sw1.umltool.features.diagram.service.DiagramNotFoundException;
 import com.sw1.umltool.features.diagram.service.DiagramSerializationException;
 import com.sw1.umltool.features.ai.voice.service.AiVoiceTimeoutException;
+import com.sw1.umltool.features.importexport.service.XmiExportException;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -35,6 +36,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DiagramSerializationException.class)
     public ResponseEntity<ApiErrorResponse> handleSerialization(DiagramSerializationException exception) {
         return error(HttpStatus.INTERNAL_SERVER_ERROR, "DIAGRAM_SERIALIZATION_ERROR", exception.getMessage());
+    }
+
+    @ExceptionHandler(XmiExportException.class)
+    public ResponseEntity<ApiErrorResponse> handleXmiExport(XmiExportException exception) {
+        return error(HttpStatus.INTERNAL_SERVER_ERROR, "XMI_EXPORT_ERROR", exception.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
