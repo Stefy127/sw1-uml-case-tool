@@ -7,6 +7,8 @@ import com.sw1.umltool.features.diagram.service.DiagramStateSerializer;
 import com.sw1.umltool.features.diagram.validation.CanonicalModelValidator;
 import com.sw1.umltool.features.importexport.dto.ImageImportPreviewResponse;
 import com.sw1.umltool.features.importexport.mapper.ImageUmlCanonicalMapper;
+import com.sw1.umltool.features.collaboration.websocket.CollaborationBroadcastService;
+import com.sw1.umltool.features.project.service.ProjectAccessService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -23,12 +25,20 @@ public class ImageImportService {
     private final CanonicalModelValidator validator;
     private final DiagramRepository repository;
     private final DiagramStateSerializer serializer;
+    private final CollaborationBroadcastService broadcaster;
+    private final ProjectAccessService access;
 
     public ImageImportService(ImageUmlAiService aiService, ImageUmlCanonicalMapper mapper,
                               CanonicalModelValidator validator, DiagramRepository repository,
                               DiagramStateSerializer serializer) {
         this.aiService = aiService; this.mapper = mapper; this.validator = validator;
         this.repository = repository; this.serializer = serializer;
+        this.broadcaster = null; this.access = null;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ImageImportService(ImageUmlAiService aiService, ImageUmlCanonicalMapper mapper, CanonicalModelValidator validator, DiagramRepository repository, DiagramStateSerializer serializer, CollaborationBroadcastService broadcaster, ProjectAccessService access) {
+        this.aiService = aiService; this.mapper = mapper; this.validator = validator; this.repository = repository; this.serializer = serializer; this.broadcaster = broadcaster; this.access = access;
     }
 
     public ImageImportPreviewResponse preview(MultipartFile file) {
@@ -37,9 +47,14 @@ public class ImageImportService {
 
     @Transactional
     public ImageImportPreviewResponse apply(String diagramId, long baseVersion, MultipartFile file) {
+        return apply(diagramId, baseVersion, file, null);
+    }
+    @Transactional
+    public ImageImportPreviewResponse apply(String diagramId, long baseVersion, MultipartFile file, String userId) {
         DiagramEntity entity = repository.findById(diagramId)
                 .orElseThrow(() -> new IllegalArgumentException("Diagrama no encontrado"));
         if (entity.getVersion() != baseVersion) throw new VersionConflictException("El diagrama cambió en otra sesión");
+        if (userId != null && access != null) access.requireDiagramEditor(diagramId, userId);
         ImageImportPreviewResponse imported = parse(file, diagramId, entity.getName());
         long newVersion = baseVersion + 1;
         imported.getCanonicalModel().setVersion(newVersion);
@@ -48,6 +63,7 @@ public class ImageImportService {
         entity.setVersion(newVersion);
         entity.setUpdatedAt(LocalDateTime.now());
         repository.save(entity);
+        if (broadcaster != null && userId != null) try { broadcaster.broadcastSnapshot(diagramId, userId, "IMAGE_IMPORT", imported.getCanonicalModel(), imported.getViewState()); } catch (IOException exception) { throw new IllegalStateException("No se pudo notificar la importaciÃ³n.", exception); }
         return imported;
     }
 

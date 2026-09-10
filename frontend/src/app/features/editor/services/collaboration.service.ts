@@ -7,7 +7,7 @@ export type CollaborationStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 
 export interface OnlineUser { userId: string; firstName: string; lastName: string; role: 'OWNER' | 'EDITOR' | 'VIEWER'; }
 export interface RemoteCursor { user: OnlineUser; x: number; y: number; updatedAt: number; }
 export interface RemoteSelection { user: OnlineUser; elementType: 'CLASS' | 'RELATION' | null; elementId: string | null; }
-export interface CollaborationEvent { type: string; diagramId?: string; operationId?: string; reason?: string; serverVersion?: number; version?: number; users?: OnlineUser[]; result?: OperationExecutionResponse; user?: OnlineUser; x?: number; y?: number; elementType?: 'CLASS' | 'RELATION' | null; elementId?: string | null; }
+export interface CollaborationEvent { type: string; diagramId?: string; operationId?: string; reason?: string; serverVersion?: number; version?: number; users?: OnlineUser[]; result?: OperationExecutionResponse; canonicalModel?: OperationExecutionResponse['canonicalModel']; viewState?: OperationExecutionResponse['viewState']; actor?: { userId: string }; user?: OnlineUser; x?: number; y?: number; elementType?: 'CLASS' | 'RELATION' | null; elementId?: string | null; }
 
 @Injectable({ providedIn: 'root' })
 export class CollaborationService {
@@ -73,6 +73,7 @@ export class CollaborationService {
   hasActiveDiagram(): boolean { return !!this.diagramId && typeof WebSocket !== 'undefined' && !!localStorage.getItem('sw1.auth.token'); }
   isConnected(): boolean { return this.status() === 'CONNECTED' && this.joined() && this.socket?.readyState === WebSocket.OPEN; }
   markResynced(version: number): void { this.knownVersion = version; this.needsResync = false; this.resyncing = false; this.joined.set(true); this.flushPending(); }
+  markApplied(version: number): void { this.knownVersion = version; }
 
   sendCursorPosition(x: number, y: number): void {
     if (!this.isConnected() || !Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -108,6 +109,10 @@ export class CollaborationService {
       this.knownVersion = message.result.newVersion;
       const pending = message.operationId ? this.pending.get(message.operationId) : undefined;
       if (pending) { this.pending.delete(message.operationId!); pending.resolve(message.result); return; }
+    }
+    if (message.type === 'DIAGRAM_SNAPSHOT_UPDATED' && message.canonicalModel && message.viewState) {
+      this.knownVersion = message.version ?? message.canonicalModel.version;
+      if (message.actor?.userId === this.currentUserId()) return;
     }
     if (message.type === 'RESYNC_REQUIRED') {
       this.needsResync = true;

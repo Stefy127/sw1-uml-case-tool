@@ -363,7 +363,7 @@ export class EditorPageComponent implements OnDestroy {
     }
     this.diagramService.getDiagramById(this.diagramId).subscribe({
       next: (diagram) => {
-        this.diagram.set(diagram);
+        this.replaceDiagram(diagram);
         this.collaboration?.connect(diagram.id, diagram.version);
         this.collaborationSubscription = this.collaboration?.events.subscribe((event) => {
           if (event.type === 'OPERATION_APPLIED' && event.result && event.result.operationId !== undefined) {
@@ -371,14 +371,22 @@ export class EditorPageComponent implements OnDestroy {
             if (!current || event.result.operationId === this.lastLocalOperationId) return;
             if (event.result.newVersion <= current.version) return;
             if (event.result.newVersion !== current.version + 1) {
-              this.diagramService.getDiagramById(this.diagramId).subscribe((latest) => this.diagram.set(latest));
+              this.diagramService.getDiagramById(this.diagramId).subscribe((latest) => this.replaceDiagram(latest));
               return;
             }
             console.debug('[WS APPLY REMOTE]', event.result.operationId, event.result.newVersion);
             this.applyOperationResponse(event.result);
           }
-          if (event.type === 'RESYNC_REQUIRED') this.diagramService.getDiagramById(this.diagramId).subscribe((current) => { this.diagram.set(current); this.collaboration?.markResynced(current.version); });
-          if (event.type === 'OPERATION_REJECTED' && event.reason === 'VERSION_CONFLICT') this.diagramService.getDiagramById(this.diagramId).subscribe((current) => { this.diagram.set(current); this.collaboration?.markResynced(current.version); });
+          if (event.type === 'RESYNC_REQUIRED') this.diagramService.getDiagramById(this.diagramId).subscribe((current) => { this.replaceDiagram(current); this.collaboration?.markResynced(current.version); });
+          if (event.type === 'OPERATION_REJECTED' && event.reason === 'VERSION_CONFLICT') this.diagramService.getDiagramById(this.diagramId).subscribe((current) => { this.replaceDiagram(current); this.collaboration?.markResynced(current.version); });
+          if (event.type === 'DIAGRAM_SNAPSHOT_UPDATED' && event.canonicalModel && event.viewState) {
+            const current = this.diagram();
+            const snapshotVersion = event.version ?? event.canonicalModel.version;
+            if (current && snapshotVersion > current.version) {
+              this.replaceDiagram({ ...current, canonicalModel: event.canonicalModel, viewState: event.viewState, version: snapshotVersion });
+              this.selectedClassId.set(null); this.selectedRelationId.set(null);
+            }
+          }
           if (event.type === 'PRESENCE') this.onlineCollaborators.set((event.users ?? []).map((user) => user.userId));
         });
         if (this.projectService) {
@@ -402,6 +410,14 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   private lastLocalOperationId: string | null = null;
+
+  /**
+   * Keeps the rendered editor and all semantic consumers (including voice)
+   * on the same authoritative diagram reference after HTTP or WebSocket work.
+   */
+  private replaceDiagram(next: DiagramDetail): void {
+    this.diagram.set(next);
+  }
 
   setActiveTool(tool: EditorTool): void {
     if (this.isReadOnly() && tool !== 'SELECT') return;
@@ -516,6 +532,8 @@ export class EditorPageComponent implements OnDestroy {
   updateVoiceText(text: string): void { this.voiceText.set(text); this.voicePreview.set(null); }
 
   interpretVoiceCommand(): void {
+    const current = this.diagram();
+    if (current) this.voiceDiagramContext(current);
     this.voiceState.set('parsing');
     const result = this.voiceParser.parse(this.voiceText());
     const command = result.command;
@@ -536,12 +554,13 @@ export class EditorPageComponent implements OnDestroy {
   interpretVoiceWithAi(): void {
     const current = this.diagram();
     if (!current || !this.voiceText().trim() || this.aiParsing()) return;
+    const context = this.voiceDiagramContext(current);
     this.aiParsing.set(true);
     this.voiceError.set('');
     this.voiceState.set('parsing');
     this.aiVoiceCommand.interpret({
       text: this.voiceText(), language: 'es-BO',
-      diagramContext: { classes: current.canonicalModel.classes.map((item) => ({ id: item.id, name: item.name })) },
+      diagramContext: context,
     }).subscribe({
       next: (response) => {
         const command = response.command;
@@ -561,7 +580,7 @@ export class EditorPageComponent implements OnDestroy {
     const command = this.voicePreview()?.command;
     const current = this.diagram();
     if (!command || !current || this.voiceState() === 'applying') return;
-    const classByName = (name?: string) => current.canonicalModel.classes.find((item) => item.name.toLowerCase() === name?.toLowerCase());
+    const classByName = (name?: string) => this.findCurrentClass(name, current);
     const target = classByName(command.className);
     if (['DELETE_CLASS', 'RENAME_CLASS', 'ADD_ATTRIBUTE', 'REMOVE_ATTRIBUTE'].includes(command.type) && !target) {
       this.voiceState.set('error'); this.voiceError.set(`No existe la clase ${command.className}.`); return;
@@ -598,6 +617,17 @@ export class EditorPageComponent implements OnDestroy {
     const canvas = document.querySelector<HTMLElement>('.canvas');
     const rect = canvas?.getBoundingClientRect();
     return { x: Math.max(0, ((rect?.width ?? 600) / 2 - 120 - this.panX()) / this.zoom()), y: Math.max(0, ((rect?.height ?? 400) / 2 - 30 - this.panY()) / this.zoom()) };
+  }
+
+  private voiceDiagramContext(current: DiagramDetail): { classes: Array<{ id: string; name: string }> } {
+    const context = { classes: current.canonicalModel.classes.map((item) => ({ id: item.id, name: item.name })) };
+    console.debug('[VOICE CURRENT DIAGRAM]', { version: current.version, classes: context.classes.map((item) => item.name), relations: current.canonicalModel.relations.length });
+    return context;
+  }
+
+  private findCurrentClass(name: string | undefined, current: DiagramDetail): UmlClass | undefined {
+    const normalized = name?.trim().replace(/^(?:el|la|los|las)\s+/i, '').toLocaleLowerCase();
+    return current.canonicalModel.classes.find((item) => item.name.trim().toLocaleLowerCase() === normalized);
   }
 
   private voiceSummary(command: NonNullable<VoiceCommandPreview['command']>): string {
@@ -692,13 +722,14 @@ export class EditorPageComponent implements OnDestroy {
       : this.xmiImportService.apply(this.diagramId, current.version, file);
     request.subscribe({
       next: (result) => {
-        this.diagram.set({
+        this.replaceDiagram({
           ...current,
           canonicalModel: result.canonicalModel,
           viewState: result.viewState,
           version: result.canonicalModel.version,
           updatedAt: new Date().toISOString(),
         });
+        this.collaboration?.markApplied(result.canonicalModel.version);
         this.importLoading.set(false);
         this.closeImportDialog();
         queueMicrotask(() => {

@@ -76,6 +76,59 @@ describe('EditorPageComponent', () => {
     page.closeVoiceDialog();
   });
 
+  it.each([
+    ['OWNER', { getMyRole: () => of({ role: 'OWNER' }), getMembers: () => of([]) }],
+    ['EDITOR', { getMyRole: () => of({ role: 'EDITOR' }), getMembers: () => of([]) }],
+  ])('uses the current canonical model for voice context regardless of %s role', async (_role, projectApi) => {
+    const current: DiagramDetail = {
+      ...detail,
+      canonicalModel: {
+        ...detail.canonicalModel,
+        classes: [
+          { id: 'client', name: 'Cliente', isAbstract: false, attributes: [], methods: [] },
+          { id: 'water', name: 'Agua', isAbstract: false, attributes: [], methods: [] },
+        ],
+      },
+    };
+    await configure({ execute: () => NEVER }, current, {}, {}, projectApi);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.voiceText.set('haz que Cliente se asocie con Agua');
+    page.interpretVoiceCommand();
+
+    expect(page.voicePreview()?.command).toEqual({
+      type: 'CREATE_RELATION',
+      relationType: 'ASSOCIATION',
+      className: 'Cliente',
+      secondaryClassName: 'Agua',
+    });
+    expect(page.currentUserRole()).toBe(_role);
+  });
+
+  it('updates the same canonical model used by voice after a collaborative snapshot', async () => {
+    const current: DiagramDetail = {
+      ...detail,
+      canonicalModel: {
+        ...detail.canonicalModel,
+        classes: [{ id: 'client', name: 'Cliente', isAbstract: false, attributes: [], methods: [] }],
+      },
+    };
+    await configure({ execute: () => NEVER }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.collaboration?.events.next({
+      type: 'DIAGRAM_SNAPSHOT_UPDATED',
+      version: 8,
+      canonicalModel: { ...current.canonicalModel, version: 8, classes: [...current.canonicalModel.classes, { id: 'water', name: 'Agua', isAbstract: false, attributes: [], methods: [] }] },
+      viewState: current.viewState,
+    });
+
+    page.voiceText.set('haz que Cliente se asocie con Agua');
+    page.interpretVoiceCommand();
+
+    expect(page.diagram()?.canonicalModel.classes.map((item) => item.name)).toEqual(['Cliente', 'Agua']);
+    expect(page.voicePreview()?.command?.secondaryClassName).toBe('Agua');
+  });
+
   it('opens the share modal from the editor for an owner and loads members', async () => {
     let memberRequests = 0;
     await configure({ execute: () => NEVER }, detail, {}, {}, {

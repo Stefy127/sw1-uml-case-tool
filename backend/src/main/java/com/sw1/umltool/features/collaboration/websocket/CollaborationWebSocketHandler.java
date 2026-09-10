@@ -37,19 +37,21 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
     private final UserRepository users;
     private final PersistentDiagramOperationService operations;
     private final DiagramOperationPayloadMapper payloadMapper;
-    private final Map<String, Set<WebSocketSession>> sessionsByDiagram = new ConcurrentHashMap<>();
     private final Map<String, OperationExecutionResponse> appliedOperations = new ConcurrentHashMap<>();
     private final Map<String, Object> diagramLocks = new ConcurrentHashMap<>();
+    private final CollaborationBroadcastService broadcaster;
 
     public CollaborationWebSocketHandler(ObjectMapper objectMapper, DiagramRepository diagrams,
                                          ProjectAccessService access,
                                          UserRepository users,
+                                         CollaborationBroadcastService broadcaster,
                                          PersistentDiagramOperationService operations,
                                          DiagramOperationPayloadMapper payloadMapper) {
         this.objectMapper = objectMapper;
         this.diagrams = diagrams;
         this.access = access;
         this.users = users;
+        this.broadcaster = broadcaster;
         this.operations = operations;
         this.payloadMapper = payloadMapper;
     }
@@ -89,7 +91,7 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
 
     private boolean joinedOn(WebSocketSession session, String diagramId) { return diagramId.equals(session.getAttributes().get("diagramId")); }
     private void sendToOthers(String diagramId, WebSocketSession sender, Object value) throws IOException {
-        for (WebSocketSession target : sessionsByDiagram.getOrDefault(diagramId, Set.of())) if (!target.getId().equals(sender.getId())) send(target, value);
+        for (WebSocketSession target : broadcaster.sessions(diagramId)) if (!target.getId().equals(sender.getId())) send(target, value);
     }
     private Map<String, Object> presenceUser(WebSocketSession session, String diagramId) {
         String id = userId(session);
@@ -106,7 +108,7 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
         log.debug("[WS VERSION CHECK] diagramId={} clientBaseVersion={} serverVersion={}", diagramId, knownVersion, diagram.getVersion());
         leave(session);
         session.getAttributes().put("diagramId", diagramId);
-        sessionsByDiagram.computeIfAbsent(diagramId, ignored -> ConcurrentHashMap.newKeySet()).add(session);
+        broadcaster.add(diagramId, session);
         if (knownVersion != diagram.getVersion()) send(session, Map.of("type", "RESYNC_REQUIRED", "diagramId", diagramId, "serverVersion", diagram.getVersion()));
         send(session, Map.of("type", "JOINED", "diagramId", diagramId, "version", diagram.getVersion()));
         broadcastPresence(diagramId);
@@ -115,18 +117,14 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
     private void leave(WebSocketSession session) throws IOException {
         Object diagramId = session.getAttributes().remove("diagramId");
         if (!(diagramId instanceof String id)) return;
-        Set<WebSocketSession> sessions = sessionsByDiagram.get(id);
-        if (sessions != null) {
-            sessions.remove(session);
-            if (sessions.isEmpty()) sessionsByDiagram.remove(id);
-            else broadcastPresence(id);
-        }
+        broadcaster.remove(id, session);
+        broadcastPresence(id);
     }
 
     private void apply(WebSocketSession session, JsonNode root) throws IOException {
         String diagramId = text(root, "diagramId");
         String userId = userId(session);
-        log.debug("[WS RECEIVE] APPLY_OPERATION diagramId={} operationId={} baseVersion={} userId={} sessions={}", diagramId, text(root, "operationId"), root.path("baseVersion").asLong(), userId, sessionsByDiagram.getOrDefault(diagramId, Set.of()).size());
+        log.debug("[WS RECEIVE] APPLY_OPERATION diagramId={} operationId={} baseVersion={} userId={} sessions={}", diagramId, text(root, "operationId"), root.path("baseVersion").asLong(), userId, broadcaster.sessions(diagramId).size());
         var entity = diagrams.findById(diagramId).orElseThrow(() -> new IllegalArgumentException("Diagrama no encontrado."));
         ProjectMemberRole role = access.resolveRole(entity.getProjectId(), userId);
         if (role != ProjectMemberRole.OWNER && role != ProjectMemberRole.EDITOR) {
@@ -160,7 +158,7 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
 
     private void sendAppliedToDiagram(String diagramId, OperationExecutionResponse response, DiagramOperation operation, String actor) throws IOException {
         Map<String, Object> message = Map.of("type", "OPERATION_APPLIED", "operationId", response.getOperationId(), "diagramId", diagramId, "actor", Map.of("userId", actor), "version", response.getNewVersion(), "operation", operation, "result", response);
-        Set<WebSocketSession> sessions = sessionsByDiagram.getOrDefault(diagramId, Set.of());
+        Set<WebSocketSession> sessions = broadcaster.sessions(diagramId);
         log.debug("[WS BROADCAST] operationId={} destinations={}", response.getOperationId(), sessions.size());
         for (WebSocketSession session : sessions) send(session, message);
     }
@@ -168,22 +166,9 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
     private void sendApplied(WebSocketSession session, OperationExecutionResponse response, String actor) throws IOException { send(session, Map.of("type", "OPERATION_APPLIED", "operationId", response.getOperationId(), "diagramId", response.getDiagramId(), "actor", Map.of("userId", actor), "version", response.getNewVersion(), "result", response)); }
 
     private void broadcastPresence(String diagramId) throws IOException {
-        Set<WebSocketSession> sessions = sessionsByDiagram.getOrDefault(diagramId, Set.of());
-        Map<String, Map<String, Object>> unique = new ConcurrentHashMap<>();
-        var diagram = diagrams.findById(diagramId).orElse(null);
-        for (WebSocketSession session : sessions) {
-            String userId = userId(session);
-            ProjectMemberRole role = diagram == null ? null : access.resolveRole(diagram.getProjectId(), userId);
-            var user = users.findById(userId).orElse(null);
-            unique.put(userId, Map.of("userId", userId,
-                    "firstName", user == null ? "" : user.getFirstName(),
-                    "lastName", user == null ? "" : user.getLastName(),
-                    "role", role == null ? "VIEWER" : role.name()));
-        }
-        sendToSessions(sessions, Map.of("type", "PRESENCE", "diagramId", diagramId, "users", new ArrayList<>(unique.values())));
+        broadcaster.broadcastPresence(diagramId);
     }
 
-    private void sendToSessions(Set<WebSocketSession> sessions, Object value) throws IOException { for (WebSocketSession session : sessions) send(session, value); }
     private void send(WebSocketSession session, Object value) throws IOException { if (session.isOpen()) session.sendMessage(new TextMessage(objectMapper.writeValueAsString(value))); }
     private String userId(WebSocketSession session) { return String.valueOf(session.getAttributes().get("userId")); }
     private String text(JsonNode node, String field) { String value = node.path(field).asText(null); if (value == null || value.isBlank()) throw new OperationApplicationException(field + " is required"); return value; }

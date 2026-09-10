@@ -28,6 +28,13 @@ export class VoiceCommandParserService {
     match = normalized.match(/^agregar metodo\s+(\S+)(?:\s+a\s+(.+))?$/);
     if (match) return this.success({ type: 'ADD_METHOD', methodName: match[1], className: match[2]?.trim() });
 
+    const naturalAssociation = normalized.match(/^haz que (?:el |la )?(.+?) se asocie con (?:el |la )?(.+)$/);
+    if (naturalAssociation) {
+      const originalAssociation = original.match(/^haz que (?:el |la )?(.+?) se asocie con (?:el |la )?(.+)$/i);
+      return this.success({ type: 'CREATE_RELATION', relationType: 'ASSOCIATION', className: this.cleanClassName(originalAssociation?.[1] ?? naturalAssociation[1]), secondaryClassName: this.cleanClassName(originalAssociation?.[2] ?? naturalAssociation[2]) });
+    }
+    const simpleAssociation = normalized.match(/^(?:relaciona|relacionar)\s+(?:a\s+)?(?:el |la )?(.+?)\s+con\s+(?:el |la )?(.+)$/);
+    if (simpleAssociation) return this.success({ type: 'CREATE_RELATION', relationType: 'ASSOCIATION', className: this.cleanClassName(simpleAssociation[1]), secondaryClassName: this.cleanClassName(simpleAssociation[2]) });
     const relation = normalized.match(/^(?:crear|crea|asociar)\s+(asociacion|agregacion|composicion|herencia|dependencia)(?:\s+entre\s+|\s+de\s+)(.+?)(?:\s+y\s+|\s+a\s+)(.+)$/);
     if (relation) {
       const relationType = this.relationType(relation[1]);
@@ -51,6 +58,7 @@ export class VoiceCommandParserService {
     const types: Record<string, string> = { string: 'String', long: 'Long', integer: 'Integer', boolean: 'Boolean', date: 'Date', localdate: 'LocalDate', bigdecimal: 'BigDecimal', double: 'Double', float: 'Float', uuid: 'UUID' };
     return types[value] ?? value;
   }
+  private cleanClassName(value: string): string { return value.trim().replace(/^(?:el|la|los|las)\s+/i, ''); }
 
   private relationType(value: string) {
     const normalized = this.normalize(value);

@@ -6,6 +6,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.core.Authentication;
 
 @RestController
 @RequestMapping("/api/import/image")
@@ -19,7 +20,7 @@ public class ImageImportController {
     }
     @PostMapping(value = "/apply", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ImageImportPreviewResponse> apply(@RequestParam String diagramId,
-            @RequestParam long baseVersion, @RequestPart("file") MultipartFile file) {
-        return ResponseEntity.ok(service.apply(diagramId, baseVersion, file));
+            @RequestParam long baseVersion, @RequestPart("file") MultipartFile file, Authentication authentication) {
+        return ResponseEntity.ok(service.apply(diagramId, baseVersion, file, authentication == null ? null : authentication.getName()));
     }
 }

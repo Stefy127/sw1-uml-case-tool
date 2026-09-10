@@ -14,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.sw1.umltool.features.collaboration.websocket.CollaborationBroadcastService;
+import com.sw1.umltool.features.project.service.ProjectAccessService;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -25,6 +27,8 @@ public class XmiImportService {
     private final CanonicalModelValidator validator;
     private final DiagramRepository repository;
     private final DiagramStateSerializer serializer;
+    private final CollaborationBroadcastService broadcaster;
+    private final ProjectAccessService access;
 
     public XmiImportService(XmiParser parser, CanonicalModelValidator validator, DiagramRepository repository,
                             DiagramStateSerializer serializer) {
@@ -32,6 +36,12 @@ public class XmiImportService {
         this.validator = validator;
         this.repository = repository;
         this.serializer = serializer;
+        this.broadcaster = null; this.access = null;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public XmiImportService(XmiParser parser, CanonicalModelValidator validator, DiagramRepository repository, DiagramStateSerializer serializer, CollaborationBroadcastService broadcaster, ProjectAccessService access) {
+        this.parser = parser; this.validator = validator; this.repository = repository; this.serializer = serializer; this.broadcaster = broadcaster; this.access = access;
     }
 
     public XmiImportPreviewResponse preview(MultipartFile file) {
@@ -40,9 +50,14 @@ public class XmiImportService {
 
     @Transactional
     public XmiImportPreviewResponse apply(String diagramId, long baseVersion, MultipartFile file) {
+        return apply(diagramId, baseVersion, file, null);
+    }
+    @Transactional
+    public XmiImportPreviewResponse apply(String diagramId, long baseVersion, MultipartFile file, String userId) {
         DiagramEntity entity = repository.findById(diagramId)
                 .orElseThrow(() -> new IllegalArgumentException("Diagrama no encontrado"));
         if (entity.getVersion() != baseVersion) throw new VersionConflictException("El diagrama cambió en otra sesión");
+        if (userId != null && access != null) access.requireDiagramEditor(diagramId, userId);
         XmiImportPreviewResponse imported = parse(file, diagramId, entity.getName());
         UmlDiagram canonical = imported.getCanonicalModel();
         canonical.setVersion(baseVersion + 1);
@@ -52,6 +67,7 @@ public class XmiImportService {
         entity.setUpdatedAt(LocalDateTime.now());
         repository.save(entity);
         imported.setCanonicalModel(canonical);
+        if (broadcaster != null && userId != null) try { broadcaster.broadcastSnapshot(diagramId, userId, "XMI_IMPORT", canonical, imported.getViewState()); } catch (IOException exception) { throw new IllegalStateException("No se pudo notificar la importaciÃ³n.", exception); }
         return imported;
     }
 

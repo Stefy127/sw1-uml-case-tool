@@ -38,6 +38,7 @@ public class SecurityConfig implements WebMvcConfigurer {
                         .requestMatchers("/api/auth/me").authenticated()
                         // JWT is validated by the WebSocket handshake interceptor.
                         .requestMatchers("/ws/collaboration").permitAll()
+                        .requestMatchers("/api/import/**").authenticated()
                         .requestMatchers("/api/projects/**", "/api/diagrams/**", "/api/shared/**").authenticated()
                         // Existing UML endpoints remain public during this incremental auth rollout.
                         .requestMatchers("/api/**").permitAll()

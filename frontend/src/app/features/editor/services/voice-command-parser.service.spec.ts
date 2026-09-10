@@ -26,6 +26,14 @@ describe('VoiceCommandParserService', () => {
     expect(result.command?.className).toBe('MiCliente');
   });
 
+  it('understands natural association wording and removes only spoken articles', () => {
+    const result = parser.parse('Haz que el Cliente se asocie con Agua');
+    expect(result.success).toBe(true);
+    expect(result.command?.className).toBe('Cliente');
+    expect(result.command?.secondaryClassName).toBe('Agua');
+    expect(result.command?.relationType).toBe('ASSOCIATION');
+  });
+
   it.each([
     ['crear clase', 'Falta el nombre de la clase.'],
     ['agregar atributo email', 'Faltan el tipo y la clase del atributo.'],
