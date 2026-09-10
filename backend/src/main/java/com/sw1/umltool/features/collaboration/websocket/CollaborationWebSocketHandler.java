@@ -20,6 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -38,6 +39,7 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
     private final DiagramOperationPayloadMapper payloadMapper;
     private final Map<String, Set<WebSocketSession>> sessionsByDiagram = new ConcurrentHashMap<>();
     private final Map<String, OperationExecutionResponse> appliedOperations = new ConcurrentHashMap<>();
+    private final Map<String, Object> diagramLocks = new ConcurrentHashMap<>();
 
     public CollaborationWebSocketHandler(ObjectMapper objectMapper, DiagramRepository diagrams,
                                          ProjectAccessService access,
@@ -59,13 +61,49 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
         if ("JOIN_DIAGRAM".equals(type)) join(session, text(root, "diagramId"), root.path("knownVersion").asLong(0));
         else if ("LEAVE_DIAGRAM".equals(type)) leave(session);
         else if ("APPLY_OPERATION".equals(type)) apply(session, root);
+        else if ("CURSOR_MOVE".equals(type)) cursorMove(session, root);
+        else if ("SELECTION_CHANGE".equals(type)) selectionChange(session, root);
         else send(session, Map.of("type", "ERROR", "message", "Mensaje WebSocket no soportado."));
+    }
+
+    private void cursorMove(WebSocketSession session, JsonNode root) throws IOException {
+        String diagramId = text(root, "diagramId");
+        if (!joinedOn(session, diagramId) || !root.path("x").isNumber() || !root.path("y").isNumber()) return;
+        double x = root.path("x").asDouble();
+        double y = root.path("y").asDouble();
+        if (!Double.isFinite(x) || !Double.isFinite(y)) return;
+        sendToOthers(diagramId, session, Map.of("type", "REMOTE_CURSOR", "diagramId", diagramId, "user", presenceUser(session, diagramId), "x", x, "y", y));
+    }
+
+    private void selectionChange(WebSocketSession session, JsonNode root) throws IOException {
+        String diagramId = text(root, "diagramId");
+        if (!joinedOn(session, diagramId)) return;
+        String elementType = root.path("elementType").isNull() ? null : root.path("elementType").asText(null);
+        String elementId = root.path("elementId").isNull() ? null : root.path("elementId").asText(null);
+        if (elementType != null && !elementType.equals("CLASS") && !elementType.equals("RELATION")) return;
+        if (elementType == null) elementId = null;
+        Map<String, Object> message = new HashMap<>();
+        message.put("type", "REMOTE_SELECTION"); message.put("diagramId", diagramId); message.put("user", presenceUser(session, diagramId)); message.put("elementType", elementType); message.put("elementId", elementId);
+        sendToOthers(diagramId, session, message);
+    }
+
+    private boolean joinedOn(WebSocketSession session, String diagramId) { return diagramId.equals(session.getAttributes().get("diagramId")); }
+    private void sendToOthers(String diagramId, WebSocketSession sender, Object value) throws IOException {
+        for (WebSocketSession target : sessionsByDiagram.getOrDefault(diagramId, Set.of())) if (!target.getId().equals(sender.getId())) send(target, value);
+    }
+    private Map<String, Object> presenceUser(WebSocketSession session, String diagramId) {
+        String id = userId(session);
+        var diagram = diagrams.findById(diagramId).orElse(null);
+        ProjectMemberRole role = diagram == null ? null : access.resolveRole(diagram.getProjectId(), id);
+        var user = users.findById(id).orElse(null);
+        return Map.of("userId", id, "firstName", user == null ? "" : user.getFirstName(), "lastName", user == null ? "" : user.getLastName(), "role", role == null ? "VIEWER" : role.name());
     }
 
     private void join(WebSocketSession session, String diagramId, long knownVersion) throws IOException {
         String userId = userId(session);
         var diagram = diagrams.findById(diagramId).orElseThrow(() -> new IllegalArgumentException("Diagrama no encontrado."));
         access.requireRead(diagram.getProjectId(), userId);
+        log.debug("[WS VERSION CHECK] diagramId={} clientBaseVersion={} serverVersion={}", diagramId, knownVersion, diagram.getVersion());
         leave(session);
         session.getAttributes().put("diagramId", diagramId);
         sessionsByDiagram.computeIfAbsent(diagramId, ignored -> ConcurrentHashMap.newKeySet()).add(session);
@@ -104,16 +142,19 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
         operation.setUserId(userId);
         operation.setBaseVersion(root.path("baseVersion").asLong(operation.getBaseVersion()));
         operation = payloadMapper.map(operation);
-        try {
+        synchronized (diagramLocks.computeIfAbsent(diagramId, ignored -> new Object())) {
+          try {
             OperationExecutionResponse response = OperationExecutionResponse.from(operations.execute(diagramId, operation, userId));
             appliedOperations.put(operationId, response);
             log.debug("[WS ACCEPT] operationId={} previousVersion={} resultingVersion={}", operationId, response.getPreviousVersion(), response.getNewVersion());
             send(session, Map.of("type", "OPERATION_ACK", "operationId", operationId, "diagramId", diagramId, "version", response.getNewVersion()));
             sendAppliedToDiagram(diagramId, response, operation, userId);
-        } catch (VersionConflictException conflict) {
+          } catch (VersionConflictException conflict) {
+            log.debug("[WS VERSION CONFLICT] operationId={} clientBaseVersion={} serverVersion={}", operationId, operation.getBaseVersion(), entity.getVersion());
             send(session, Map.of("type", "OPERATION_REJECTED", "operationId", operationId, "reason", "VERSION_CONFLICT", "serverVersion", entity.getVersion()));
-        } catch (IllegalArgumentException | IllegalStateException | OperationApplicationException error) {
+          } catch (IllegalArgumentException | IllegalStateException | OperationApplicationException error) {
             send(session, Map.of("type", "OPERATION_REJECTED", "operationId", operationId, "reason", "INVALID_OPERATION", "message", error.getMessage()));
+          }
         }
     }
 

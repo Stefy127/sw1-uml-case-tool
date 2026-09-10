@@ -81,6 +81,9 @@
         <div class="canvas-state">Este diagrama aún no tiene clases</div>
       }
       <div class="diagram-world" [style.transform]="worldTransform()" style="transform-origin: 0 0">
+      @for (cursor of collaboration?.remoteCursors?.() | keyvalue; track cursor.key) {
+        <div class="remote-cursor" [style.left.px]="cursor.value.x" [style.top.px]="cursor.value.y"><span class="remote-cursor-pointer"></span><span>{{ cursor.value.user.firstName }}</span></div>
+      }
       <svg class="relations-layer" aria-hidden="true">
         <defs>
           <marker id="relation-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
@@ -107,6 +110,8 @@
           <path
             class="relation-line"
             [class.selected]="item.relation.id === selectedRelationId()"
+            [class.remote-selected]="remoteSelected('RELATION', item.relation.id)"
+            [attr.title]="remoteSelectionNames('RELATION', item.relation.id)"
             [class.dependency]="item.relation.type === 'DEPENDENCY'"
             [attr.d]="item.path"
             [attr.marker-start]="relationMarkerStart(item.relation)"
@@ -135,6 +140,8 @@
         <article
           class="uml-class"
           [class.selected]="item.umlClass.id === selectedClassId()"
+          [class.remote-selected]="remoteSelected('CLASS', item.umlClass.id)"
+          [attr.title]="remoteSelectionNames('CLASS', item.umlClass.id)"
           [class.relation-source]="item.umlClass.id === relationSourceClassId()"
           [class.dragging]="dragState()?.classId === item.umlClass.id && dragState()?.isDragging"
           (click)="selectClass(item.umlClass, $event)"

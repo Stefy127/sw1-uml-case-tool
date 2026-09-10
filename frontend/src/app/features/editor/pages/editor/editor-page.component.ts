@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, KeyValuePipe } from '@angular/common';
 import { Component, computed, inject, OnDestroy, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
@@ -154,7 +154,7 @@ type RelationPropertyOperation =
 
 @Component({
   selector: 'app-editor-page',
-  imports: [RouterLink, DecimalPipe, ShareProjectModalComponent],
+  imports: [RouterLink, DecimalPipe, KeyValuePipe, ShareProjectModalComponent],
   templateUrl: './editor-page.component.html',
   styleUrl: './editor-page.component.scss',
 })
@@ -892,6 +892,7 @@ export class EditorPageComponent implements OnDestroy {
     if (this.activeTool() === 'RELATION') return;
     this.selectedClassId.set(null);
     this.selectedRelationId.set(null);
+    this.collaboration?.sendSelection(null, null);
   }
 
   selectClass(umlClass: UmlClass, event: MouseEvent): void {
@@ -902,6 +903,7 @@ export class EditorPageComponent implements OnDestroy {
         this.relationSourceClassId.set(umlClass.id);
         this.selectedClassId.set(umlClass.id);
         this.selectedRelationId.set(null);
+        this.collaboration?.sendSelection('CLASS', umlClass.id);
       } else {
         this.createRelation(sourceClassId, umlClass.id);
       }
@@ -910,6 +912,7 @@ export class EditorPageComponent implements OnDestroy {
     if (this.activeTool() === 'SELECT') {
       this.selectedClassId.set(umlClass.id);
       this.selectedRelationId.set(null);
+      this.collaboration?.sendSelection('CLASS', umlClass.id);
     }
   }
 
@@ -918,6 +921,7 @@ export class EditorPageComponent implements OnDestroy {
     if (this.activeTool() !== 'SELECT') return;
     this.selectedRelationId.set(relation.id);
     this.selectedClassId.set(null);
+    this.collaboration?.sendSelection('RELATION', relation.id);
     this.syncRelationDrafts(relation);
   }
 
@@ -1353,6 +1357,9 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   onCanvasPointerMove(event: PointerEvent): void {
+    const viewport = event.currentTarget as HTMLElement;
+    const cursorPoint = this.screenToWorld(event.clientX, event.clientY, viewport);
+    this.collaboration?.sendCursorPosition(cursorPoint.x, cursorPoint.y);
     if (this.panState()) {
       this.updatePan(event);
       return;
@@ -1539,6 +1546,19 @@ export class EditorPageComponent implements OnDestroy {
       x: (clientX - rect.left - this.panX()) / this.zoom(),
       y: (clientY - rect.top - this.panY()) / this.zoom(),
     };
+  }
+
+  remoteSelected(elementType: 'CLASS' | 'RELATION', elementId: string): boolean {
+    return Object.values(this.collaboration?.remoteSelections() ?? {}).some(
+      (selection) => selection.elementType === elementType && selection.elementId === elementId,
+    );
+  }
+
+  remoteSelectionNames(elementType: 'CLASS' | 'RELATION', elementId: string): string {
+    return Object.values(this.collaboration?.remoteSelections() ?? {})
+      .filter((selection) => selection.elementType === elementType && selection.elementId === elementId)
+      .map((selection) => `${selection.user.firstName} ${selection.user.lastName}`.trim())
+      .join(', ');
   }
 
   zoomIn(): void {

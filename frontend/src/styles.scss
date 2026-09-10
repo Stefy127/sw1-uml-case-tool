@@ -502,4 +502,8 @@ h3 {
 .presence-user small,.presence-user i { color:var(--color-text-muted); font-size:11px; font-style:normal; }
 .presence-user i { color:var(--color-success); }
 .presence-trigger:hover { filter:brightness(.98); }
+.remote-cursor { position:absolute; z-index:15; pointer-events:none; display:flex; align-items:center; gap:4px; color:var(--color-primary); font-size:10px; font-weight:700; transform:translate(4px,4px); }
+.remote-cursor-pointer { width:0; height:0; border-top:9px solid var(--color-primary); border-right:6px solid transparent; transform:rotate(-25deg); }
+.remote-selected { box-shadow:0 0 0 3px var(--color-primary-soft), 0 0 0 5px var(--color-primary); }
+.relation-line.remote-selected { filter:drop-shadow(0 0 3px var(--color-primary)); }
 
