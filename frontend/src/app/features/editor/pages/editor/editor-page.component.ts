@@ -1321,6 +1321,7 @@ export class EditorPageComponent implements OnDestroy {
 
   onClassPointerDown(umlClass: UmlClass, event: PointerEvent): void {
     event.stopPropagation();
+    if ((event.target as HTMLElement | null)?.closest('.inline-edit-trigger')) return;
     const canvas = (event.currentTarget as HTMLElement).closest('.canvas') as HTMLElement | null;
     if (canvas && this.shouldStartPan(event)) {
       this.startPan(event, canvas);
@@ -1752,6 +1753,24 @@ export class EditorPageComponent implements OnDestroy {
     });
   }
 
+  beginInlineAttributeEdit(classId: string, attributeId: string, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (this.isReadOnly()) return;
+    console.debug('[INLINE DBLCLICK ATTRIBUTE]', { classId, attributeId });
+    const umlClass = this.diagram()?.canonicalModel.classes.find((candidate) => candidate.id === classId);
+    const attribute = umlClass?.attributes.find((candidate) => candidate.id === attributeId);
+    if (!umlClass || !attribute) return;
+    this.selectedClassId.set(classId);
+    this.selectedRelationId.set(null);
+    this.startEditAttribute(attribute);
+    setTimeout(() => {
+      const input = document.querySelector<HTMLInputElement>('[aria-label="Nombre del atributo"]');
+      input?.focus();
+      input?.select();
+    });
+  }
+
   updateAttributeDraft(field: keyof AttributeDraft, value: string | boolean): void {
     this.attributeDraft.update((draft) =>
       draft ? ({ ...draft, [field]: value } as AttributeDraft) : draft,
@@ -1933,6 +1952,24 @@ export class EditorPageComponent implements OnDestroy {
       returnType: method.returnType,
       visibility: method.visibility as Visibility,
       isStatic: method.isStatic,
+    });
+  }
+
+  beginInlineMethodEdit(classId: string, methodId: string, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (this.isReadOnly()) return;
+    console.debug('[INLINE DBLCLICK METHOD]', { classId, methodId });
+    const umlClass = this.diagram()?.canonicalModel.classes.find((candidate) => candidate.id === classId);
+    const method = umlClass?.methods.find((candidate) => candidate.id === methodId);
+    if (!umlClass || !method) return;
+    this.selectedClassId.set(classId);
+    this.selectedRelationId.set(null);
+    this.startEditMethod(method);
+    setTimeout(() => {
+      const input = document.querySelector<HTMLInputElement>('[aria-label="Nombre del método"]');
+      input?.focus();
+      input?.select();
     });
   }
 
@@ -2309,6 +2346,8 @@ export class EditorPageComponent implements OnDestroy {
       (candidate) => candidate.id === classId,
     );
     if (!umlClass) return;
+    console.debug('[INLINE DBLCLICK CLASS]', { classId, className: umlClass.name });
+    console.debug('[INLINE PERMISSION]', { role: this.currentUserRole(), canEdit: !this.isReadOnly(), readOnly: this.isReadOnly() });
     this.selectedClassId.set(classId);
     this.renameError.set('');
     this.editingName.set(umlClass.name);

@@ -167,6 +167,7 @@
               />
             } @else {
               <b
+                class="inline-edit-trigger"
                 [class.abstract-name]="isAbstract(item.umlClass)"
                 (dblclick)="beginInlineEdit(item.umlClass.id); $event.stopPropagation()"
                 >{{ item.umlClass.name }}</b
@@ -180,12 +181,24 @@
               <span class="empty-line">Sin atributos</span>
             }
             @for (attribute of item.umlClass.attributes; track attribute.id) {
-              <span [class.static-member]="isStatic(attribute)"
-                >{{ visibilitySymbol(attribute.visibility) }} {{ formatAttribute(attribute) }}
-                @if (attribute.primaryKey) {
-                  <small class="pk">PK</small>
-                }
-              </span>
+              @if (editingAttributeId() === attribute.id && attributeDraft(); as draft) {
+                <div class="inline-member-editor" (click)="$event.stopPropagation()">
+                  <input class="inline-member-input" aria-label="Nombre del atributo" [value]="draft.name" (input)="updateAttributeDraft('name', $any($event.target).value)" (keydown.enter)="saveAttribute()" (keydown.escape)="cancelAttributeEdit()" />
+                  <input class="inline-member-input inline-type-input" aria-label="Tipo del atributo" [value]="draft.type" (input)="updateAttributeDraft('type', $any($event.target).value)" (keydown.enter)="saveAttribute()" (keydown.escape)="cancelAttributeEdit()" />
+                  <select class="inline-member-select" aria-label="Visibilidad del atributo" [value]="draft.visibility" (change)="updateAttributeDraft('visibility', $any($event.target).value)">
+                    @for (visibility of visibilityOptions; track visibility) { <option [value]="visibility">{{ visibilitySymbol(visibility) }}</option> }
+                  </select>
+                  <button type="button" class="inline-member-confirm add-attribute" aria-label="Guardar atributo" [disabled]="attributeSaving()" (click)="saveAttribute()">✓</button>
+                  <button type="button" class="inline-member-cancel btn btn-ghost" aria-label="Cancelar edición de atributo" [disabled]="attributeSaving()" (click)="cancelAttributeEdit()">×</button>
+                </div>
+              } @else {
+                <span class="inline-edit-trigger" [class.static-member]="isStatic(attribute)" (dblclick)="beginInlineAttributeEdit(item.umlClass.id, attribute.id, $event)"
+                  >{{ visibilitySymbol(attribute.visibility) }} {{ formatAttribute(attribute) }}
+                  @if (attribute.primaryKey) {
+                    <small class="pk">PK</small>
+                  }
+                </span>
+              }
             }
           </div>
           <div class="uml-lines methods" [style.background-color]="item.bodyColor || null">
@@ -193,9 +206,18 @@
               <span class="empty-line">Sin métodos</span>
             }
             @for (method of item.umlClass.methods; track method.id) {
-              <span [class.static-member]="isStatic(method)"
-                >{{ visibilitySymbol(method.visibility) }} {{ formatMethod(method) }}</span
-              >
+              @if (editingMethodId() === method.id && methodDraft(); as draft) {
+                <div class="inline-member-editor" (click)="$event.stopPropagation()">
+                  <input class="inline-member-input" aria-label="Nombre del método" [value]="draft.name" (input)="updateMethodDraft('name', $any($event.target).value)" (keydown.enter)="saveMethod()" (keydown.escape)="cancelMethodEdit()" />
+                  <input class="inline-member-input inline-type-input" aria-label="Tipo de retorno" [value]="draft.returnType" (input)="updateMethodDraft('returnType', $any($event.target).value)" (keydown.enter)="saveMethod()" (keydown.escape)="cancelMethodEdit()" />
+                  <button type="button" class="inline-member-confirm add-attribute" aria-label="Guardar método" [disabled]="methodSaving()" (click)="saveMethod()">✓</button>
+                  <button type="button" class="inline-member-cancel btn btn-ghost" aria-label="Cancelar edición de método" [disabled]="methodSaving()" (click)="cancelMethodEdit()">×</button>
+                </div>
+              } @else {
+                <span class="inline-edit-trigger" [class.static-member]="isStatic(method)" (dblclick)="beginInlineMethodEdit(item.umlClass.id, method.id, $event)"
+                  >{{ visibilitySymbol(method.visibility) }} {{ formatMethod(method) }}</span
+                >
+              }
             }
           </div>
           @if (activeTool() === 'SELECT' && selectedClassId() === item.umlClass.id) {

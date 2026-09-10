@@ -712,6 +712,20 @@ describe('EditorPageComponent', () => {
     page.cancelInlineEdit();
   });
 
+  it('activates class inline editing from the real DOM double-click event', async () => {
+    const current = diagramWithClass();
+    await configure({ execute: () => NEVER }, current);
+    const fixture = TestBed.createComponent(EditorPageComponent);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const name = fixture.nativeElement.querySelector('.inline-edit-trigger') as HTMLElement;
+    expect(name).not.toBeNull();
+    name.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('input.inline-name')).not.toBeNull();
+    expect(fixture.componentInstance.editingClassId()).toBe('c1');
+  });
+
   it('cancels inline editing with Escape without deleting the class', async () => {
     const current = {
       ...detail,
@@ -726,6 +740,25 @@ describe('EditorPageComponent', () => {
     page.cancelInlineEdit();
     expect(page.diagram()?.canonicalModel.classes).toHaveLength(1);
     expect(page.editingClassId()).toBeNull();
+  });
+
+  it('starts inline attribute and method editing from the diagram without changing their ids', async () => {
+    const current = diagramWithClass();
+    const attribute: UmlAttribute = { id: 'a1', name: 'email', type: 'String', visibility: 'PRIVATE', isStatic: false, isFinal: false, defaultValue: null, primaryKey: false };
+    const method: UmlMethod = { id: 'm1', name: 'buscar', returnType: 'Cliente', visibility: 'PUBLIC', isStatic: false, parameters: [] };
+    current.canonicalModel.classes[0].attributes = [attribute];
+    current.canonicalModel.classes[0].methods = [method];
+    await configure({ execute: () => NEVER }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.beginInlineAttributeEdit('c1', 'a1', { preventDefault: () => undefined, stopPropagation: () => undefined } as unknown as MouseEvent);
+    expect(page.selectedClassId()).toBe('c1');
+    expect(page.editingAttributeId()).toBe('a1');
+    expect(page.attributeDraft()?.name).toBe('email');
+    page.cancelAttributeEdit();
+    page.beginInlineMethodEdit('c1', 'm1', { preventDefault: () => undefined, stopPropagation: () => undefined } as unknown as MouseEvent);
+    expect(page.editingMethodId()).toBe('m1');
+    expect(page.methodDraft()?.name).toBe('buscar');
   });
 
   it('rejects duplicate names without executing and keeps the selection flow safe', async () => {

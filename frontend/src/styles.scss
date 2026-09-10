@@ -507,3 +507,11 @@ h3 {
 .remote-selected { box-shadow:0 0 0 3px var(--color-primary-soft), 0 0 0 5px var(--color-primary); }
 .relation-line.remote-selected { filter:drop-shadow(0 0 3px var(--color-primary)); }
 
+/* Compact inline UML member editors share the editor's visual tokens. */
+.inline-member-editor { display: flex; gap: 4px; }
+.inline-member-input, .inline-member-select { width: 0; height: 24px; padding: 2px 4px; border: 1px solid var(--color-border); border-radius: 5px; color: var(--color-text); }
+.inline-member-input { flex: 1; }
+.inline-type-input { flex: 0 0 65px; }
+.inline-member-select { flex: 0 0 32px; padding: 2px; }
+.inline-name { width: 100%; min-width: 0; padding: 2px 5px; border: 1px solid var(--color-primary); border-radius: 5px; outline: 0; color: var(--color-text); background: var(--color-surface); font: inherit; font-weight: 700; }
+.inline-edit-trigger { cursor: text; }
