@@ -15,7 +15,7 @@
         <button class="btn btn-soft" type="button" (click)="openShare()">♧ Compartir</button>
       }
       <app-export-menu [diagramId]="diagramId" />
-      <button class="btn btn-primary">&lt;/&gt; Generar backend</button>
+      <button class="btn btn-primary" type="button" (click)="openGeneratorDialog()">&lt;/&gt; Generar backend</button>
     </div>
   </header>
 
@@ -978,6 +978,21 @@
         @if (importError()) { <p class="error-message">{{ importError() }}</p> }
         @if (importConfirming()) { <div class="import-confirmation"><b>Esta importación reemplazará el contenido actual del diagrama.</b><div><button class="btn btn-ghost" type="button" (click)="cancelImportConfirmation()">Cancelar</button><button class="btn btn-primary" type="button" [disabled]="importLoading()" (click)="applyImport()">Importar y reemplazar</button></div></div> }
         @if (!importConfirming()) { <button class="btn btn-ghost import-footer-cancel" type="button" [disabled]="importLoading()" (click)="closeImportDialog()">Cancelar</button> }
+      </section>
+    </div>
+  }
+  @if (generatorDialogOpen()) {
+    <div class="attribute-modal-backdrop generator-modal-backdrop" role="presentation" (click)="closeGeneratorDialog()">
+      <section class="attribute-modal generator-modal" role="dialog" aria-modal="true" aria-labelledby="generator-title" (click)="$event.stopPropagation()">
+        <header class="generator-modal-header"><div class="attribute-modal-icon">&lt;/&gt;</div><div><h2 id="generator-title">Generar backend</h2><p>Genera un proyecto Spring Boot desde el modelo UML actual.</p></div><button class="import-modal-close" type="button" aria-label="Cerrar generación" [disabled]="generatorLoading()" (click)="closeGeneratorDialog()">&times;</button></header>
+        <div class="attribute-form generator-form">
+          <label>Nombre del proyecto<input [value]="generatorOptions().projectName" (input)="updateGeneratorOption('projectName', $any($event.target).value)" /></label>
+          <label>Artifact ID<input [value]="generatorOptions().artifactId" (input)="updateGeneratorOption('artifactId', $any($event.target).value)" /></label>
+          <label>Group ID<input [value]="generatorOptions().groupId" (input)="updateGeneratorOption('groupId', $any($event.target).value)" /></label>
+          <label>Paquete base<input [value]="generatorOptions().basePackage" (input)="updateGeneratorOption('basePackage', $any($event.target).value)" /></label>
+        </div>
+        @if (generatorError()) { <p class="error-message">{{ generatorError() }}</p> }
+        <div class="attribute-actions"><button class="btn btn-ghost" type="button" [disabled]="generatorLoading()" (click)="closeGeneratorDialog()">Cancelar</button><button class="btn btn-primary" type="button" [disabled]="generatorLoading() || !generatorOptions().artifactId.trim()" (click)="generateBackend()">{{ generatorLoading() ? 'Generando...' : 'Generar y descargar' }}</button></div>
       </section>
     </div>
   }

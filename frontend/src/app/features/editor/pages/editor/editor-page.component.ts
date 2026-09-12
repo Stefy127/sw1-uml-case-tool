@@ -36,6 +36,7 @@ import { ProjectMember, ProjectMemberRole } from '../../../projects/models/proje
 import { ProjectService } from '../../../projects/services/project.service';
 import { ShareProjectModalComponent } from '../../../projects/components/share-project-modal/share-project-modal.component';
 import { ExportMenuComponent } from '../../components/export-menu/export-menu.component';
+import { BackendGeneratorService, BackendGenerationRequest } from '../../services/backend-generator.service';
 
 type EditorTool = 'SELECT' | 'CLASS' | 'RELATION';
 type RelationType =
@@ -166,6 +167,7 @@ export class EditorPageComponent implements OnDestroy {
   readonly collaboration = inject(CollaborationService, { optional: true });
   private readonly xmiImportService = inject(XmiImportService);
   private readonly imageImportService = inject(ImageImportService);
+  private readonly backendGenerator = inject(BackendGeneratorService);
   private readonly voiceParser = inject(VoiceCommandParserService);
   private readonly voiceRecognition = inject(VoiceRecognitionService);
   private readonly aiVoiceCommand = inject(AiVoiceCommandService);
@@ -226,6 +228,15 @@ export class EditorPageComponent implements OnDestroy {
   readonly importKind = computed<'XMI' | 'IMAGE' | null>(() => {
     const name = this.importFile()?.name.toLowerCase() ?? '';
     return name.endsWith('.xmi') || name.endsWith('.xml') ? 'XMI' : name ? 'IMAGE' : null;
+  });
+  readonly generatorDialogOpen = signal(false);
+  readonly generatorLoading = signal(false);
+  readonly generatorError = signal('');
+  readonly generatorOptions = signal<BackendGenerationRequest>({
+    basePackage: 'com.generated.app',
+    artifactId: 'generated-backend',
+    groupId: 'com.generated',
+    projectName: 'Generated UML Backend',
   });
   readonly voiceDialogOpen = signal(false);
   readonly voiceState = signal<'idle' | 'listening' | 'recognized' | 'parsing' | 'ready' | 'applying' | 'error'>('idle');
@@ -428,6 +439,41 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   openShare(): void { this.shareOpen.set(true); }
+
+  openGeneratorDialog(): void {
+    const name = this.diagram()?.name ?? 'uml-diagram';
+    const artifact = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'generated-backend';
+    this.generatorOptions.set({ ...this.generatorOptions(), artifactId: artifact, projectName: `${name} Backend` });
+    this.generatorError.set('');
+    this.generatorDialogOpen.set(true);
+  }
+
+  closeGeneratorDialog(): void {
+    if (!this.generatorLoading()) this.generatorDialogOpen.set(false);
+  }
+
+  updateGeneratorOption(field: keyof BackendGenerationRequest, value: string): void {
+    this.generatorOptions.update((options) => ({ ...options, [field]: value }));
+  }
+
+  generateBackend(): void {
+    if (!this.diagramId || this.generatorLoading()) return;
+    this.generatorLoading.set(true);
+    this.generatorError.set('');
+    this.backendGenerator.generate(this.diagramId, this.generatorOptions()).subscribe({
+      next: (response) => {
+        if (!response.body) { this.generatorError.set('La generación no devolvió ningún archivo.'); this.generatorLoading.set(false); return; }
+        const filename = response.headers.get('content-disposition')?.match(/filename="?([^";]+)"?/i)?.[1] ?? `${this.generatorOptions().artifactId}.zip`;
+        const url = URL.createObjectURL(response.body);
+        const anchor = document.createElement('a'); anchor.href = url; anchor.download = filename; anchor.click(); URL.revokeObjectURL(url);
+        this.generatorLoading.set(false); this.generatorDialogOpen.set(false);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.generatorError.set(error.status === 403 ? 'No tienes permisos para generar este backend.' : error.error?.message ?? 'No se pudo generar el backend.');
+        this.generatorLoading.set(false);
+      },
+    });
+  }
   togglePresence(): void { this.presenceOpen.update((open) => !open); }
 
   setRelationTool(type: RelationType): void {
