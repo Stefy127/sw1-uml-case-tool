@@ -169,7 +169,7 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
         broadcaster.broadcastPresence(diagramId);
     }
 
-    private void send(WebSocketSession session, Object value) throws IOException { if (session.isOpen()) session.sendMessage(new TextMessage(objectMapper.writeValueAsString(value))); }
+    private void send(WebSocketSession session, Object value) { broadcaster.send(session, value); }
     private String userId(WebSocketSession session) { return String.valueOf(session.getAttributes().get("userId")); }
     private String text(JsonNode node, String field) { String value = node.path(field).asText(null); if (value == null || value.isBlank()) throw new OperationApplicationException(field + " is required"); return value; }
 
