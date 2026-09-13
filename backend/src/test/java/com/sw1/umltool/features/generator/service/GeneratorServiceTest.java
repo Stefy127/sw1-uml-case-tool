@@ -125,11 +125,15 @@ class GeneratorServiceTest {
 
         String pom = entry(zip, "generated-backend/pom.xml");
         String config = entry(zip, "generated-backend/src/main/java/com/generated/app/config/OpenApiConfig.java");
+        String cors = entry(zip, "generated-backend/src/main/java/com/generated/app/config/CorsConfig.java");
         String controller = entry(zip, "generated-backend/src/main/java/com/generated/app/controller/MateriaController.java");
         String readme = entry(zip, "generated-backend/README.md");
         String collection = entry(zip, "generated-backend/postman/test.postman_collection.json");
         assertTrue(pom.contains("springdoc-openapi-starter-webmvc-ui") && pom.contains("2.8.9"));
         assertTrue(config.contains("@OpenAPIDefinition") && config.contains("Test API"));
+        assertTrue(cors.contains("allowedOriginPatterns(\"http://localhost:*\", \"http://127.0.0.1:*\")")
+                && cors.contains("addMapping(\"/**\")")
+                && cors.contains("allowedMethods(\"GET\", \"POST\", \"PUT\", \"DELETE\", \"PATCH\", \"OPTIONS\")"));
         assertTrue(controller.contains("@Tag") && controller.contains("@Operation"));
         assertTrue(readme.contains("/swagger-ui.html") && readme.contains("/v3/api-docs")
                 && readme.contains("postman/test.postman_collection.json"));

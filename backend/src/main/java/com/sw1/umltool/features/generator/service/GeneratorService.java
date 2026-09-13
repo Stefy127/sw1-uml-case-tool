@@ -40,11 +40,12 @@ public class GeneratorService {
             try (ZipOutputStream zip = new ZipOutputStream(bytes, StandardCharsets.UTF_8)) {
                 String root = artifact + "/";
                 put(zip, root + "pom.xml", pom(group, artifact, project));
-                put(zip, root + "README.md", readme(project, artifact, diagram, classes));
+                put(zip, root + "README.md", readme(project, artifact, diagram, classes) + corsReadme());
                 put(zip, root + "src/main/resources/application.properties", properties());
                 String packagePath = base.replace('.', '/');
                 put(zip, root + "src/main/java/" + packagePath + "/GeneratedApplication.java", application(base, project));
                 put(zip, root + "src/main/java/" + packagePath + "/config/OpenApiConfig.java", openApiConfig(base, project));
+                put(zip, root + "src/main/java/" + packagePath + "/config/CorsConfig.java", corsConfig(base));
                 for (UmlClass umlClass : classes.values()) {
                     String parent = inheritanceParent(umlClass, diagram, classes);
                     boolean dto = needsDto(umlClass, diagram, associationClassRelations);
@@ -457,6 +458,30 @@ public class GeneratorService {
     private String pom(String group, String artifact, String project) { return "<project xmlns=\"http://maven.apache.org/POM/4.0.0\"><modelVersion>4.0.0</modelVersion><parent><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-parent</artifactId><version>3.4.5</version><relativePath/></parent><groupId>" + xml(group) + "</groupId><artifactId>" + xml(artifact) + "</artifactId><version>0.0.1-SNAPSHOT</version><name>" + xml(project) + "</name><properties><java.version>21</java.version></properties><dependencies><dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency><dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency><dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope></dependency><dependency><groupId>org.springdoc</groupId><artifactId>springdoc-openapi-starter-webmvc-ui</artifactId><version>2.8.9</version></dependency><dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency></dependencies><build><plugins><plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins></build></project>\n"; }
     private String properties() { return "spring.datasource.url=${DB_URL:jdbc:postgresql://localhost:5432/generated_db}\nspring.datasource.username=${DB_USERNAME:postgres}\nspring.datasource.password=${DB_PASSWORD:postgres}\nspring.jpa.hibernate.ddl-auto=update\n"; }
     private String readme(String project, String artifact, UmlDiagram diagram, Map<String, UmlClass> classes) { return "# " + project + "\n\nBackend Spring Boot generado desde el modelo UML canónico. Requiere Java 21, Maven y PostgreSQL.\n\n## Ejecución\n\nEjecuta `mvn spring-boot:run` o `mvn package` y luego `java -jar target/*.jar`. Configura `DB_URL`, `DB_USERNAME` y `DB_PASSWORD` si PostgreSQL no usa los valores predeterminados.\n\n## API\n\n- Swagger UI: http://localhost:8080/swagger-ui.html\n- OpenAPI JSON: http://localhost:8080/v3/api-docs\n- Colección Postman: `postman/" + safeArtifact(project, artifact) + ".postman_collection.json`\n\nLa colección utiliza la variable `baseUrl` con valor `http://localhost:8080`. Entidades generadas: " + classes.values().stream().map(UmlClass::getName).toList() + ".\n"; }
+
+    private String corsConfig(String base) {
+        return "package " + base + ".config;\n\n"
+                + "import org.springframework.context.annotation.Configuration;\n"
+                + "import org.springframework.web.servlet.config.annotation.CorsRegistry;\n"
+                + "import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;\n\n"
+                + "@Configuration\n"
+                + "public class CorsConfig implements WebMvcConfigurer {\n"
+                + "    @Override\n"
+                + "    public void addCorsMappings(CorsRegistry registry) {\n"
+                + "        registry.addMapping(\"/**\")\n"
+                + "                .allowedOriginPatterns(\"http://localhost:*\", \"http://127.0.0.1:*\")\n"
+                + "                .allowedMethods(\"GET\", \"POST\", \"PUT\", \"DELETE\", \"PATCH\", \"OPTIONS\")\n"
+                + "                .allowedHeaders(\"*\");\n"
+                + "    }\n"
+                + "}\n";
+    }
+
+    private String corsReadme() {
+        return "\n## CORS para desarrollo\n\n"
+                + "Se permiten los orígenes http://localhost:* y http://127.0.0.1:*, "
+                + "incluyendo Flutter Web con puertos dinámicos. "
+                + "Esta política debe restringirse a dominios conocidos en producción.\n";
+    }
 
     private String postmanCollection(String project, UmlDiagram diagram, List<UmlClass> documentedClasses,
             Map<String, UmlClass> classes, Map<String, UmlRelation> associationClassRelations) {
