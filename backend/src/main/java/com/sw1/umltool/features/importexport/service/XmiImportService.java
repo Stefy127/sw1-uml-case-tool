@@ -67,7 +67,9 @@ public class XmiImportService {
         entity.setUpdatedAt(LocalDateTime.now());
         repository.save(entity);
         imported.setCanonicalModel(canonical);
-        if (broadcaster != null && userId != null) try { broadcaster.broadcastSnapshot(diagramId, userId, "XMI_IMPORT", canonical, imported.getViewState()); } catch (IOException exception) { throw new IllegalStateException("No se pudo notificar la importaciÃ³n.", exception); }
+        if (broadcaster != null && userId != null) {
+            broadcaster.broadcastSnapshot(diagramId, userId, "XMI_IMPORT", canonical, imported.getViewState());
+        }
         return imported;
     }
 

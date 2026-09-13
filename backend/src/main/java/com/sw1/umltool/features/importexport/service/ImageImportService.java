@@ -63,7 +63,9 @@ public class ImageImportService {
         entity.setVersion(newVersion);
         entity.setUpdatedAt(LocalDateTime.now());
         repository.save(entity);
-        if (broadcaster != null && userId != null) try { broadcaster.broadcastSnapshot(diagramId, userId, "IMAGE_IMPORT", imported.getCanonicalModel(), imported.getViewState()); } catch (IOException exception) { throw new IllegalStateException("No se pudo notificar la importaciÃ³n.", exception); }
+        if (broadcaster != null && userId != null) {
+            broadcaster.broadcastSnapshot(diagramId, userId, "IMAGE_IMPORT", imported.getCanonicalModel(), imported.getViewState());
+        }
         return imported;
     }
 

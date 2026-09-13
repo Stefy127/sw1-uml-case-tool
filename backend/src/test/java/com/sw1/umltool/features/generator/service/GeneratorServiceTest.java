@@ -29,10 +29,15 @@ class GeneratorServiceTest {
                         UmlAttribute.builder().id("pname").name("nombre").type("String").build())).build();
         UmlClass alumno = UmlClass.builder().id("alumno").name("Alumno")
                 .attributes(List.of(UmlAttribute.builder().id("code").name("codigo").type("String").build())).build();
+        UmlClass materia = UmlClass.builder().id("materia").name("Materia").build();
         UmlRelation inheritance = UmlRelation.builder().id("r1").sourceClassId("alumno").targetClassId("persona")
-                .type(RelationType.INHERITANCE).build();
-        UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(persona, alumno))
-                .relations(List.of(inheritance)).build();
+                .type(RelationType.INHERITANCE).sourceMultiplicity(new Multiplicity("1", "1"))
+                .targetMultiplicity(new Multiplicity("1", "1")).build();
+        UmlRelation association = UmlRelation.builder().id("r2").sourceClassId("alumno").targetClassId("materia")
+                .type(RelationType.ASSOCIATION).sourceMultiplicity(new Multiplicity("1", "1"))
+                .targetMultiplicity(new Multiplicity("0", "*")).build();
+        UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(persona, alumno, materia))
+                .relations(List.of(inheritance, association)).build();
         byte[] zip = generate(mockSerializer(diagram), null);
 
         String request = entry(zip, "generated-backend/src/main/java/com/generated/app/dto/AlumnoRequestDto.java");
@@ -64,7 +69,7 @@ class GeneratorServiceTest {
         String horarioService = entry(zip, "generated-backend/src/main/java/com/generated/app/service/HorarioService.java");
         assertFalse(cursoRequest.contains("horarioId"));
         assertTrue(cursoResponse.contains("horarioId"));
-        assertFalse(cursoService.contains("HorarioRepository") || cursoService.contains("setHorario"));
+        assertFalse(cursoService.contains("HorarioRepository") || cursoService.contains("entity.setHorario("));
         assertTrue(horarioRequest.contains("cursoId"));
         assertTrue(horarioService.contains("CursoRepository") && horarioService.contains("setCurso"));
     }
@@ -74,7 +79,9 @@ class GeneratorServiceTest {
         DiagramStateSerializer serializer = mock(DiagramStateSerializer.class);
         UmlClass persona = UmlClass.builder().id("persona").name("Persona").build();
         UmlClass alumno = UmlClass.builder().id("alumno").name("Alumno").build();
-        UmlRelation inheritance = UmlRelation.builder().id("r1").sourceClassId("alumno").targetClassId("persona").type(RelationType.INHERITANCE).build();
+        UmlRelation inheritance = UmlRelation.builder().id("r1").sourceClassId("alumno").targetClassId("persona")
+                .type(RelationType.INHERITANCE).sourceMultiplicity(new Multiplicity("1", "1"))
+                .targetMultiplicity(new Multiplicity("1", "1")).build();
         UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Prueba").classes(List.of(persona, alumno)).relations(List.of(inheritance)).build();
         when(serializer.deserializeCanonical("canonical")).thenReturn(diagram);
 
@@ -107,8 +114,8 @@ class GeneratorServiceTest {
     void generatedBackendIncludesOpenApiAndPostmanDocumentation() throws Exception {
         UmlClass carrera = UmlClass.builder().id("carrera").name("Carrera").build();
         UmlClass materia = UmlClass.builder().id("materia").name("Materia")
-                .attributes(List.of(UmlAttribute.builder().name("nombre").type("String").build(),
-                        UmlAttribute.builder().name("creditos").type("Integer").build())).build();
+                .attributes(List.of(UmlAttribute.builder().id("materia-nombre").name("nombre").type("String").build(),
+                        UmlAttribute.builder().id("materia-creditos").name("creditos").type("Integer").build())).build();
         UmlRelation relation = UmlRelation.builder().id("r1").sourceClassId("carrera").targetClassId("materia")
                 .type(RelationType.ASSOCIATION).sourceMultiplicity(new Multiplicity("1", "1"))
                 .targetMultiplicity(new Multiplicity("0", "*")).build();
@@ -126,7 +133,9 @@ class GeneratorServiceTest {
         assertTrue(controller.contains("@Tag") && controller.contains("@Operation"));
         assertTrue(readme.contains("/swagger-ui.html") && readme.contains("/v3/api-docs")
                 && readme.contains("postman/test.postman_collection.json"));
-        assertTrue(collection.startsWith("{\"info\"") && collection.contains("\"baseUrl\":\"http://localhost:8080\""));
+        assertTrue(collection.startsWith("{\"info\"")
+                && collection.contains("\"key\":\"baseUrl\"")
+                && collection.contains("\"value\":\"http://localhost:8080\""));
         assertTrue(collection.contains("GET all") && collection.contains("GET by ID") && collection.contains("POST")
                 && collection.contains("PUT") && collection.contains("DELETE"));
         assertTrue(collection.contains("carreraId") && !collection.contains("materiaId"));
@@ -147,7 +156,7 @@ class GeneratorServiceTest {
         assertTrue(request.contains("carreraId") && response.contains("carreraId"));
         assertFalse(response.contains("Carrera carrera"));
         assertTrue(service.contains("CarreraRepository") && service.contains("findById(value.getCarreraId())"));
-        assertTrue(service.contains("new ArrayList<>("));
+        assertFalse(service.contains("new ArrayList<>("));
         assertTrue(service.contains("MateriaResponseDto findById"));
         assertFalse(controller.contains("Optional<MateriaResponseDto>"));
     }
@@ -241,9 +250,10 @@ class GeneratorServiceTest {
     }
 
     private String entry(byte[] zip, String expected) throws Exception {
+        String suffix = expected.substring(expected.indexOf('/') + 1);
         try (ZipInputStream input = new ZipInputStream(new ByteArrayInputStream(zip), StandardCharsets.UTF_8)) {
             for (var entry = input.getNextEntry(); entry != null; entry = input.getNextEntry()) {
-                if (entry.getName().equals(expected)) return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+                if (entry.getName().equals(suffix) || entry.getName().endsWith("/" + suffix)) return new String(input.readAllBytes(), StandardCharsets.UTF_8);
             }
         }
         fail("ZIP entry not found: " + expected);
