@@ -146,6 +146,53 @@ class GeneratorServiceTest {
     }
 
     @Test
+    void runtimeSchemaDescribesGenericEntitiesFieldsAndRelations() throws Exception {
+        UmlClass persona = UmlClass.builder().id("persona").name("Persona")
+                .attributes(List.of(UmlAttribute.builder().id("persona-id").name("id").type("Long").build(),
+                        UmlAttribute.builder().id("persona-name").name("nombre").type("String").build())).build();
+        UmlClass alumno = UmlClass.builder().id("alumno").name("Alumno")
+                .attributes(List.of(UmlAttribute.builder().id("alumno-code").name("codigo").type("String").build())).build();
+        UmlClass carrera = UmlClass.builder().id("carrera").name("Carrera")
+                .attributes(List.of(UmlAttribute.builder().id("carrera-id").name("id").type("Long").build(),
+                        UmlAttribute.builder().id("carrera-name").name("nombre").type("String").build())).build();
+        UmlClass materia = UmlClass.builder().id("materia").name("Materia")
+                .attributes(List.of(UmlAttribute.builder().id("materia-id").name("id").type("Long").build(),
+                        UmlAttribute.builder().id("materia-credits").name("creditos").type("Integer").build())).build();
+        UmlClass inscription = UmlClass.builder().id("inscription").name("Inscripcion").build();
+        UmlRelation inheritance = UmlRelation.builder().id("inheritance").sourceClassId("alumno").targetClassId("persona")
+                .type(RelationType.INHERITANCE).sourceMultiplicity(new Multiplicity("1", "1"))
+                .targetMultiplicity(new Multiplicity("1", "1")).build();
+        UmlRelation normalRelation = UmlRelation.builder().id("career-subject").sourceClassId("carrera").targetClassId("materia")
+                .type(RelationType.ASSOCIATION).sourceMultiplicity(new Multiplicity("1", "1"))
+                .targetMultiplicity(new Multiplicity("0", "*")).build();
+        UmlRelation associationClassRelation = UmlRelation.builder().id("student-subject").sourceClassId("alumno").targetClassId("materia")
+                .type(RelationType.ASSOCIATION).sourceMultiplicity(new Multiplicity("1", "1"))
+                .targetMultiplicity(new Multiplicity("0", "*")).build();
+        AssociationClassLink link = AssociationClassLink.builder().id("link").relationId("student-subject").classId("inscription").build();
+        UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test")
+                .classes(List.of(persona, alumno, carrera, materia, inscription))
+                .relations(List.of(inheritance, normalRelation, associationClassRelation))
+                .associationClassLinks(List.of(link)).build();
+
+        byte[] zip = generate(mockSerializer(diagram), null);
+        String runtime = entry(zip, "generated-backend/src/main/java/com/generated/app/controller/RuntimeSchemaController.java");
+
+        assertTrue(runtime.contains("@GetMapping(value = \"/runtime-schema\""));
+        assertTrue(runtime.contains("\\\"application\\\":\\\"Test\\\""));
+        assertTrue(runtime.contains("\\\"displayField\\\":\\\"nombre\\\""));
+        assertTrue(runtime.contains("\\\"type\\\":\\\"integer\\\""));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"id\\\",\\\"type\\\":\\\"integer\\\",\\\"required\\\":true,\\\"editable\\\":false"));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"carreraId\\\",\\\"type\\\":\\\"relation\\\""));
+        assertTrue(runtime.contains("\\\"targetEntity\\\":\\\"Carrera\\\",\\\"owningSide\\\":true"));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"materiasIds\\\",\\\"type\\\":\\\"relation\\\"")
+                && runtime.contains("\\\"name\\\":\\\"materiasIds\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":true,\\\"editable\\\":false"));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"sourceId\\\",\\\"type\\\":\\\"relation\\\"")
+                && runtime.contains("\\\"targetEntity\\\":\\\"Alumno\\\""));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"nombre\\\",\\\"type\\\":\\\"string\\\""));
+        assertFalse(runtime.contains("\\\"targetEntity\\\":\\\"Dependency\\\""));
+    }
+
+    @Test
     void relatedEntitiesGenerateIdBasedDtosAndRepositoryResolution() throws Exception {
         UmlClass carrera = UmlClass.builder().id("carrera").name("Carrera").build();
         UmlClass materia = UmlClass.builder().id("materia").name("Materia").build();

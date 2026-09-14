@@ -17,7 +17,7 @@ import java.util.zip.ZipOutputStream;
 
 @Service
 public class GeneratorService {
-    private record RelationSpec(String field, String idField, String otherType, String otherRepository, String otherIdType, boolean collection, boolean owningSide) {}
+    private record RelationSpec(String field, String idField, String otherType, String otherRepository, String otherIdType, boolean collection, boolean owningSide, boolean required) {}
     private final DiagramStateSerializer serializer;
     private final GeneratorValidator validator;
 
@@ -46,6 +46,7 @@ public class GeneratorService {
                 put(zip, root + "src/main/java/" + packagePath + "/GeneratedApplication.java", application(base, project));
                 put(zip, root + "src/main/java/" + packagePath + "/config/OpenApiConfig.java", openApiConfig(base, project));
                 put(zip, root + "src/main/java/" + packagePath + "/config/CorsConfig.java", corsConfig(base));
+                put(zip, root + "src/main/java/" + packagePath + "/controller/RuntimeSchemaController.java", runtimeSchemaController(base, runtimeSchemaJson(project, diagram, classes, associationClassRelations)));
                 for (UmlClass umlClass : classes.values()) {
                     String parent = inheritanceParent(umlClass, diagram, classes);
                     boolean dto = needsDto(umlClass, diagram, associationClassRelations);
@@ -267,15 +268,16 @@ public class GeneratorService {
             String otherField = javaField(javaName(other.getName()));
             String field = collection ? plural(otherField) : otherField;
             String idField = field + (collection ? "Ids" : "Id");
-            result.putIfAbsent(idField, new RelationSpec(field, idField, javaName(other.getName()), javaName(other.getName()) + "Repository", idType(other, classes, diagram), collection, owningSide));
+            boolean currentRequired = source ? required(relation.getSourceMultiplicity()) : required(relation.getTargetMultiplicity());
+            result.putIfAbsent(idField, new RelationSpec(field, idField, javaName(other.getName()), javaName(other.getName()) + "Repository", idType(other, classes, diagram), collection, owningSide, currentRequired));
             }
         }
         UmlRelation association = associationClassRelations.get(current.getId());
         if (association != null) {
             UmlClass source = classes.get(association.getSourceClassId());
             UmlClass target = classes.get(association.getTargetClassId());
-            if (source != null) result.putIfAbsent("sourceId", new RelationSpec("associationSource", "sourceId", javaName(source.getName()), javaName(source.getName()) + "Repository", idType(source, classes, diagram), false, true));
-            if (target != null) result.putIfAbsent("targetId", new RelationSpec("associationTarget", "targetId", javaName(target.getName()), javaName(target.getName()) + "Repository", idType(target, classes, diagram), false, true));
+            if (source != null) result.putIfAbsent("sourceId", new RelationSpec("associationSource", "sourceId", javaName(source.getName()), javaName(source.getName()) + "Repository", idType(source, classes, diagram), false, true, required(association.getSourceMultiplicity())));
+            if (target != null) result.putIfAbsent("targetId", new RelationSpec("associationTarget", "targetId", javaName(target.getName()), javaName(target.getName()) + "Repository", idType(target, classes, diagram), false, true, required(association.getTargetMultiplicity())));
         }
         return new ArrayList<>(result.values());
     }
@@ -481,6 +483,106 @@ public class GeneratorService {
                 + "Se permiten los orígenes http://localhost:* y http://127.0.0.1:*, "
                 + "incluyendo Flutter Web con puertos dinámicos. "
                 + "Esta política debe restringirse a dominios conocidos en producción.\n";
+    }
+
+    private String runtimeSchemaController(String base, String schema) {
+        return "package " + base + ".controller;\n\n"
+                + "import org.springframework.http.MediaType;\n"
+                + "import org.springframework.web.bind.annotation.GetMapping;\n"
+                + "import org.springframework.web.bind.annotation.RequestMapping;\n"
+                + "import org.springframework.web.bind.annotation.RestController;\n\n"
+                + "@RestController\n@RequestMapping(\"/api\")\n"
+                + "public class RuntimeSchemaController {\n"
+                + "    @GetMapping(value = \"/runtime-schema\", produces = MediaType.APPLICATION_JSON_VALUE)\n"
+                + "    public String getRuntimeSchema() { return \"" + javaString(schema) + "\"; }\n"
+                + "}\n";
+    }
+
+    private String runtimeSchemaJson(String project, UmlDiagram diagram, Map<String, UmlClass> classes,
+            Map<String, UmlRelation> associationClassRelations) {
+        List<UmlClass> runtimeClasses = new ArrayList<>(classes.values());
+        runtimeClasses.addAll(bridgeClasses(diagram, classes, associationClassRelations));
+        StringBuilder out = new StringBuilder("{\"application\":").append(json(project))
+                .append(",\"version\":\"1.0\",\"entities\":[");
+        for (int i = 0; i < runtimeClasses.size(); i++) {
+            if (i > 0) out.append(',');
+            UmlClass item = runtimeClasses.get(i);
+            out.append("{\"name\":").append(json(javaName(item.getName())))
+                    .append(",\"endpoint\":").append(json("/api/" + plural(item.getName())))
+                    .append(",\"idField\":\"id\",\"displayField\":").append(json(displayField(item, diagram, classes)))
+                    .append(",\"operations\":{\"list\":true,\"get\":true,\"create\":true,\"update\":true,\"delete\":true}")
+                    .append(",\"fields\":[");
+            out.append(String.join(",", runtimeFields(item, diagram, classes, associationClassRelations)));
+            out.append("]}");
+        }
+        return out.append("]}").toString();
+    }
+
+    private List<String> runtimeFields(UmlClass item, UmlDiagram diagram, Map<String, UmlClass> classes,
+            Map<String, UmlRelation> associationClassRelations) {
+        List<String> fields = new ArrayList<>();
+        fields.add("{\"name\":\"id\",\"type\":\"" + runtimeType(idType(item, classes, diagram))
+                + "\",\"required\":true,\"editable\":false,\"nullable\":false,\"collection\":false,\"relation\":false}");
+        if (!item.getId().startsWith("bridge-")) {
+            for (UmlAttribute attr : effectiveAttributes(item, diagram, classes)) {
+                if (attr.getName() == null || attr.getName().equalsIgnoreCase("id")) continue;
+                String name = javaField(attr.getName());
+                fields.add("{\"name\":" + json(name) + ",\"type\":" + json(runtimeType(javaType(attr.getType(), classes)))
+                        + ",\"required\":false,\"editable\":true,\"nullable\":true,\"collection\":false,\"relation\":false}");
+            }
+            for (RelationSpec spec : relationSpecs(item, diagram, classes, associationClassRelations, false)) {
+                fields.add(runtimeRelationField(spec));
+            }
+        } else {
+            UmlRelation relation = diagram.getRelations().stream()
+                    .filter(r -> ("bridge-" + r.getId()).equals(item.getId())).findFirst().orElse(null);
+            if (relation != null) {
+                UmlClass source = classes.get(relation.getSourceClassId());
+                UmlClass target = classes.get(relation.getTargetClassId());
+                if (source != null) fields.add(runtimeRelationField("source", source, required(relation.getSourceMultiplicity()), true));
+                if (target != null) fields.add(runtimeRelationField("target", target, required(relation.getTargetMultiplicity()), true));
+            }
+        }
+        return fields;
+    }
+
+    private String runtimeRelationField(RelationSpec spec) {
+        return "{\"name\":" + json(spec.idField()) + ",\"type\":\"relation\",\"required\":" + spec.required()
+                + ",\"editable\":" + spec.owningSide() + ",\"nullable\":" + !spec.required()
+                + ",\"collection\":" + spec.collection() + ",\"relation\":true,\"targetEntity\":"
+                + json(spec.otherType()) + ",\"owningSide\":" + spec.owningSide()
+                + ",\"requestField\":" + json(spec.owningSide() ? spec.idField() : null) + "}";
+    }
+
+    private String runtimeRelationField(String name, UmlClass target, boolean required, boolean owningSide) {
+        return "{\"name\":" + json(name) + ",\"type\":\"relation\",\"required\":" + required
+                + ",\"editable\":" + owningSide + ",\"nullable\":" + !required
+                + ",\"collection\":false,\"relation\":true,\"targetEntity\":"
+                + json(javaName(target.getName())) + ",\"owningSide\":" + owningSide
+                + ",\"requestField\":" + json(owningSide ? name : null) + "}";
+    }
+
+    private String displayField(UmlClass item, UmlDiagram diagram, Map<String, UmlClass> classes) {
+        List<UmlAttribute> attributes = effectiveAttributes(item, diagram, classes);
+        for (String preferred : List.of("nombre", "name", "titulo", "title")) {
+            Optional<UmlAttribute> match = attributes.stream()
+                    .filter(a -> preferred.equalsIgnoreCase(a.getName())).findFirst();
+            if (match.isPresent()) return javaField(match.get().getName());
+        }
+        return attributes.stream()
+                .filter(a -> !a.getName().equalsIgnoreCase("id") && "String".equals(runtimeType(javaType(a.getType(), classes))))
+                .map(a -> javaField(a.getName())).findFirst().orElse("id");
+    }
+
+    private String runtimeType(String javaType) {
+        return switch (javaType) {
+            case "Integer", "Long", "Short", "Byte" -> "integer";
+            case "Double", "Float", "BigDecimal" -> "decimal";
+            case "Boolean" -> "boolean";
+            case "LocalDate" -> "date";
+            case "LocalDateTime", "Instant" -> "datetime";
+            default -> "string";
+        };
     }
 
     private String postmanCollection(String project, UmlDiagram diagram, List<UmlClass> documentedClasses,
