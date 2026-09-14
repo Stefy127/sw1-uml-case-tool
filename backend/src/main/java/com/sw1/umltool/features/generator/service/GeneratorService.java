@@ -487,11 +487,12 @@ public class GeneratorService {
 
     private String runtimeSchemaController(String base, String schema) {
         return "package " + base + ".controller;\n\n"
+                + "import io.swagger.v3.oas.annotations.Hidden;\n"
                 + "import org.springframework.http.MediaType;\n"
                 + "import org.springframework.web.bind.annotation.GetMapping;\n"
                 + "import org.springframework.web.bind.annotation.RequestMapping;\n"
                 + "import org.springframework.web.bind.annotation.RestController;\n\n"
-                + "@RestController\n@RequestMapping(\"/api\")\n"
+                + "@RestController\n@Hidden\n@RequestMapping(\"/api\")\n"
                 + "public class RuntimeSchemaController {\n"
                 + "    @GetMapping(value = \"/runtime-schema\", produces = MediaType.APPLICATION_JSON_VALUE)\n"
                 + "    public String getRuntimeSchema() { return \"" + javaString(schema) + "\"; }\n"
@@ -502,7 +503,7 @@ public class GeneratorService {
             Map<String, UmlRelation> associationClassRelations) {
         List<UmlClass> runtimeClasses = new ArrayList<>(classes.values());
         runtimeClasses.addAll(bridgeClasses(diagram, classes, associationClassRelations));
-        StringBuilder out = new StringBuilder("{\"application\":").append(json(project))
+        StringBuilder out = new StringBuilder("{\"schemaVersion\":\"1.0\",\"application\":").append(json(project))
                 .append(",\"version\":\"1.0\",\"entities\":[");
         for (int i = 0; i < runtimeClasses.size(); i++) {
             if (i > 0) out.append(',');
@@ -522,13 +523,13 @@ public class GeneratorService {
             Map<String, UmlRelation> associationClassRelations) {
         List<String> fields = new ArrayList<>();
         fields.add("{\"name\":\"id\",\"type\":\"" + runtimeType(idType(item, classes, diagram))
-                + "\",\"required\":true,\"editable\":false,\"nullable\":false,\"collection\":false,\"relation\":false}");
+                + "\",\"required\":true,\"editable\":false,\"readOnly\":true,\"nullable\":false,\"collection\":false,\"relation\":false}");
         if (!item.getId().startsWith("bridge-")) {
             for (UmlAttribute attr : effectiveAttributes(item, diagram, classes)) {
                 if (attr.getName() == null || attr.getName().equalsIgnoreCase("id")) continue;
                 String name = javaField(attr.getName());
                 fields.add("{\"name\":" + json(name) + ",\"type\":" + json(runtimeType(javaType(attr.getType(), classes)))
-                        + ",\"required\":false,\"editable\":true,\"nullable\":true,\"collection\":false,\"relation\":false}");
+                        + ",\"required\":false,\"editable\":true,\"readOnly\":false,\"nullable\":true,\"collection\":false,\"relation\":false}");
             }
             for (RelationSpec spec : relationSpecs(item, diagram, classes, associationClassRelations, false)) {
                 fields.add(runtimeRelationField(spec));
@@ -547,8 +548,10 @@ public class GeneratorService {
     }
 
     private String runtimeRelationField(RelationSpec spec) {
-        return "{\"name\":" + json(spec.idField()) + ",\"type\":\"relation\",\"required\":" + spec.required()
-                + ",\"editable\":" + spec.owningSide() + ",\"nullable\":" + !spec.required()
+        boolean requestRequired = spec.owningSide() && spec.required();
+        boolean nullable = !spec.owningSide() || !spec.required();
+        return "{\"name\":" + json(spec.idField()) + ",\"type\":\"relation\",\"required\":" + requestRequired
+                + ",\"editable\":" + spec.owningSide() + ",\"readOnly\":" + !spec.owningSide() + ",\"nullable\":" + nullable
                 + ",\"collection\":" + spec.collection() + ",\"relation\":true,\"targetEntity\":"
                 + json(spec.otherType()) + ",\"owningSide\":" + spec.owningSide()
                 + ",\"requestField\":" + json(spec.owningSide() ? spec.idField() : null) + "}";
@@ -556,7 +559,7 @@ public class GeneratorService {
 
     private String runtimeRelationField(String name, UmlClass target, boolean required, boolean owningSide) {
         return "{\"name\":" + json(name) + ",\"type\":\"relation\",\"required\":" + required
-                + ",\"editable\":" + owningSide + ",\"nullable\":" + !required
+                + ",\"editable\":" + owningSide + ",\"readOnly\":" + !owningSide + ",\"nullable\":" + !required
                 + ",\"collection\":false,\"relation\":true,\"targetEntity\":"
                 + json(javaName(target.getName())) + ",\"owningSide\":" + owningSide
                 + ",\"requestField\":" + json(owningSide ? name : null) + "}";
@@ -570,7 +573,7 @@ public class GeneratorService {
             if (match.isPresent()) return javaField(match.get().getName());
         }
         return attributes.stream()
-                .filter(a -> !a.getName().equalsIgnoreCase("id") && "String".equals(runtimeType(javaType(a.getType(), classes))))
+                .filter(a -> !a.getName().equalsIgnoreCase("id") && "string".equals(runtimeType(javaType(a.getType(), classes))))
                 .map(a -> javaField(a.getName())).findFirst().orElse("id");
     }
 

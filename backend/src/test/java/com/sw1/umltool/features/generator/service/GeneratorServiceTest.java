@@ -178,18 +178,78 @@ class GeneratorServiceTest {
         String runtime = entry(zip, "generated-backend/src/main/java/com/generated/app/controller/RuntimeSchemaController.java");
 
         assertTrue(runtime.contains("@GetMapping(value = \"/runtime-schema\""));
+        assertTrue(runtime.contains("\\\"schemaVersion\\\":\\\"1.0\\\""));
+        assertTrue(runtime.contains("@Hidden"));
         assertTrue(runtime.contains("\\\"application\\\":\\\"Test\\\""));
         assertTrue(runtime.contains("\\\"displayField\\\":\\\"nombre\\\""));
         assertTrue(runtime.contains("\\\"type\\\":\\\"integer\\\""));
-        assertTrue(runtime.contains("\\\"name\\\":\\\"id\\\",\\\"type\\\":\\\"integer\\\",\\\"required\\\":true,\\\"editable\\\":false"));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"id\\\",\\\"type\\\":\\\"integer\\\",\\\"required\\\":true,\\\"editable\\\":false,\\\"readOnly\\\":true"));
         assertTrue(runtime.contains("\\\"name\\\":\\\"carreraId\\\",\\\"type\\\":\\\"relation\\\""));
         assertTrue(runtime.contains("\\\"targetEntity\\\":\\\"Carrera\\\",\\\"owningSide\\\":true"));
         assertTrue(runtime.contains("\\\"name\\\":\\\"materiasIds\\\",\\\"type\\\":\\\"relation\\\"")
-                && runtime.contains("\\\"name\\\":\\\"materiasIds\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":true,\\\"editable\\\":false"));
+                && runtime.contains("\\\"name\\\":\\\"materiasIds\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":false,\\\"editable\\\":false,\\\"readOnly\\\":true,\\\"nullable\\\":true")
+                && runtime.contains("\\\"collection\\\":true")
+                && runtime.contains("\\\"requestField\\\":null"));
         assertTrue(runtime.contains("\\\"name\\\":\\\"sourceId\\\",\\\"type\\\":\\\"relation\\\"")
                 && runtime.contains("\\\"targetEntity\\\":\\\"Alumno\\\""));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"sourceId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":true,\\\"editable\\\":true,\\\"readOnly\\\":false")
+                && runtime.contains("\\\"requestField\\\":\\\"sourceId\\\""));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"targetId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":false,\\\"editable\\\":true,\\\"readOnly\\\":false,\\\"nullable\\\":true"));
         assertTrue(runtime.contains("\\\"name\\\":\\\"nombre\\\",\\\"type\\\":\\\"string\\\""));
         assertFalse(runtime.contains("\\\"targetEntity\\\":\\\"Dependency\\\""));
+    }
+
+    @Test
+    void runtimeSchemaUsesFirstStringAttributeAsDisplayField() throws Exception {
+        UmlClass aula = UmlClass.builder().id("aula").name("Aula")
+                .attributes(List.of(UmlAttribute.builder().id("aula-id").name("id").type("Long").build(),
+                        UmlAttribute.builder().id("aula-number").name("numero").type("String").build())).build();
+        UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(aula)).build();
+
+        String runtime = entry(generate(mockSerializer(diagram), null),
+                "generated-backend/src/main/java/com/generated/app/controller/RuntimeSchemaController.java");
+
+        assertTrue(runtime.contains("\\\"displayField\\\":\\\"numero\\\""));
+    }
+
+    @Test
+    void runtimeSchemaMarksInverseFieldsNonRequiredAndOwningRequiredWhenApplicable() throws Exception {
+        UmlClass carrera = UmlClass.builder().id("carrera").name("Carrera").build();
+        UmlClass aula = UmlClass.builder().id("aula").name("Aula").build();
+        UmlRelation relation = UmlRelation.builder().id("r1").sourceClassId("carrera").targetClassId("aula")
+                .type(RelationType.ASSOCIATION).sourceMultiplicity(new Multiplicity("1", "1"))
+                .targetMultiplicity(new Multiplicity("1", "1")).build();
+        UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test")
+                .classes(List.of(carrera, aula)).relations(List.of(relation)).build();
+
+        String runtime = entry(generate(mockSerializer(diagram), null),
+                "generated-backend/src/main/java/com/generated/app/controller/RuntimeSchemaController.java");
+
+        assertTrue(runtime.contains("\\\"name\\\":\\\"carreraId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":true,\\\"editable\\\":true,\\\"readOnly\\\":false,\\\"nullable\\\":false"));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"aulaId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":false,\\\"editable\\\":false,\\\"readOnly\\\":true,\\\"nullable\\\":true"));
+    }
+
+    @Test
+    void runtimeSchemaNormalizesSupportedScalarTypes() throws Exception {
+        UmlClass item = UmlClass.builder().id("item").name("Item")
+                .attributes(List.of(
+                        UmlAttribute.builder().id("item-id").name("id").type("Long").build(),
+                        UmlAttribute.builder().id("amount").name("amount").type("BigDecimal").build(),
+                        UmlAttribute.builder().id("active").name("active").type("Boolean").build(),
+                        UmlAttribute.builder().id("date").name("date").type("LocalDate").build(),
+                        UmlAttribute.builder().id("timestamp").name("timestamp").type("LocalDateTime").build())).build();
+        UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(item)).build();
+
+        String runtime = entry(generate(mockSerializer(diagram), null),
+                "generated-backend/src/main/java/com/generated/app/controller/RuntimeSchemaController.java");
+
+        assertTrue(runtime.contains("\\\"type\\\":\\\"decimal\\\""));
+        assertTrue(runtime.contains("\\\"type\\\":\\\"boolean\\\""));
+        assertTrue(runtime.contains("\\\"type\\\":\\\"date\\\""));
+        assertTrue(runtime.contains("\\\"type\\\":\\\"datetime\\\""));
+        assertFalse(runtime.contains("\\\"type\\\":\\\"BigDecimal\\\"")
+                || runtime.contains("\\\"type\\\":\\\"LocalDate\\\"")
+                || runtime.contains("\\\"type\\\":\\\"LocalDateTime\\\""));
     }
 
     @Test
