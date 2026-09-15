@@ -50,7 +50,11 @@ public class SecurityConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
-                .allowedOrigins("http://localhost:4200")
+                .allowedOrigins(
+                "http://localhost:4200",
+                "http://18-226-234-229.sslip.io",
+                "https://18-226-234-229.sslip.io"
+            )
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*");
     }
