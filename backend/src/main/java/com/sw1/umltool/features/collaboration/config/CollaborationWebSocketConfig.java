@@ -23,6 +23,10 @@ public class CollaborationWebSocketConfig implements WebSocketConfigurer {
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(handler, "/ws/collaboration")
                 .addInterceptors(jwtHandshakeInterceptor)
-                .setAllowedOrigins("http://localhost:4200");
+                .setAllowedOrigins(
+                    "http://localhost:4200",
+                    "http://18-226-234-229.sslip.io",
+                    "https://18-226-234-229.sslip.io"
+                );
     }
 }
