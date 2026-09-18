@@ -83,7 +83,17 @@ public class GeneratorService {
         String idType = idType(umlClass, classes, diagram);
         StringBuilder out = new StringBuilder("package ").append(base).append(".entity;\n\n");
         out.append("import jakarta.persistence.*;\nimport com.fasterxml.jackson.annotation.JsonIgnore;\nimport java.time.*;\nimport java.math.BigDecimal;\nimport java.util.*;\n\n");
-        out.append("@Entity\n@Table(name=\"").append(sqlName(name)).append("\")\n");
+        out.append("@Entity\n");
+        if (acRelations.containsKey(umlClass.getId())) {
+            UmlRelation association = acRelations.get(umlClass.getId());
+            UmlClass source = classes.get(association.getSourceClassId());
+            UmlClass target = classes.get(association.getTargetClassId());
+            if (source != null && target != null) {
+                out.append("@Table(name=\"").append(sqlName(name)).append("\", uniqueConstraints = @UniqueConstraint(columnNames = {\"")
+                        .append(sqlName(javaField(target.getName()))).append("_id\", \"")
+                        .append(sqlName(javaField(source.getName()))).append("_id\"}))\n");
+            } else out.append("@Table(name=\"").append(sqlName(name)).append("\")\n");
+        } else out.append("@Table(name=\"").append(sqlName(name)).append("\")\n");
         if (isInheritanceRoot(umlClass, diagram)) out.append("@Inheritance(strategy = InheritanceType.JOINED)\n");
         if (parent == null) out.append("public "); else out.append("public ");
         out.append("class ").append(name);
@@ -108,13 +118,13 @@ public class GeneratorService {
         }
         UmlRelation linkedAssociation = acRelations.get(umlClass.getId());
         if (linkedAssociation != null) {
-            addAssociationClassEnd(out, fields, classes, linkedAssociation.getSourceClassId(), "associationSource");
-            addAssociationClassEnd(out, fields, classes, linkedAssociation.getTargetClassId(), "associationTarget");
+            addAssociationClassEnd(out, fields, classes, linkedAssociation.getSourceClassId());
+            addAssociationClassEnd(out, fields, classes, linkedAssociation.getTargetClassId());
         } else if (umlClass.getId() != null && umlClass.getId().startsWith("bridge-")) {
             UmlRelation bridgeRelation = diagram.getRelations().stream().filter(r -> ("bridge-" + r.getId()).equals(umlClass.getId())).findFirst().orElse(null);
             if (bridgeRelation != null) {
-                addAssociationClassEnd(out, fields, classes, bridgeRelation.getSourceClassId(), "source");
-                addAssociationClassEnd(out, fields, classes, bridgeRelation.getTargetClassId(), "target");
+                addAssociationClassEnd(out, fields, classes, bridgeRelation.getSourceClassId());
+                addAssociationClassEnd(out, fields, classes, bridgeRelation.getTargetClassId());
             }
         }
         appendJavaBeanAccessors(out);
@@ -139,16 +149,16 @@ public class GeneratorService {
         }
     }
 
-    private void addAssociationClassEnd(StringBuilder out, Set<String> fields, Map<String, UmlClass> classes, String classId, String preferredField) {
+    private void addAssociationClassEnd(StringBuilder out, Set<String> fields, Map<String, UmlClass> classes, String classId) {
         UmlClass target = classes.get(classId);
         if (target == null) return;
         String type = javaName(target.getName());
-        String field = preferredField;
+        String field = javaField(target.getName());
         if (!fields.add(field)) {
             field = javaField(type);
             if (!fields.add(field)) return;
         }
-        out.append("    @ManyToOne\n    @JoinColumn(name=\"").append(sqlName(field)).append("_id\")\n    private ").append(type).append(' ').append(field).append(";\n\n");
+        out.append("    @ManyToOne(optional = false)\n    @JoinColumn(name=\"").append(sqlName(field)).append("_id\", nullable = false)\n    private ").append(type).append(' ').append(field).append(";\n\n");
     }
 
     private void appendRelationFields(StringBuilder out, Set<String> fields, UmlClass current, UmlRelation relation, Map<String, UmlClass> classes) {
@@ -174,7 +184,8 @@ public class GeneratorService {
 
         if (targetMany) {
             if (currentIsTarget) {
-                addField(out, fields, "    @ManyToOne(optional = " + !required(relation.getTargetMultiplicity()) + ")\n    @JoinColumn(name=\"" + sqlName(sourceField) + "_id\")\n    private " + sourceType + " " + sourceField + ";\n\n", sourceField);
+                boolean required = required(relation.getSourceMultiplicity());
+                addField(out, fields, "    @ManyToOne(optional = " + !required + ")\n    @JoinColumn(name=\"" + sqlName(sourceField) + "_id\", nullable = " + !required + ")\n    private " + sourceType + " " + sourceField + ";\n\n", sourceField);
             } else {
                 String field = plural(targetField);
                 String annotation = "    @OneToMany(mappedBy = \"" + sourceField + "\")\n    @JsonIgnore\n";
@@ -184,7 +195,8 @@ public class GeneratorService {
         }
         if (sourceMany) {
             if (currentIsSource) {
-                addField(out, fields, "    @ManyToOne(optional = " + !required(relation.getSourceMultiplicity()) + ")\n    @JoinColumn(name=\"" + sqlName(targetField) + "_id\")\n    private " + targetType + " " + targetField + ";\n\n", targetField);
+                boolean required = required(relation.getTargetMultiplicity());
+                addField(out, fields, "    @ManyToOne(optional = " + !required + ")\n    @JoinColumn(name=\"" + sqlName(targetField) + "_id\", nullable = " + !required + ")\n    private " + targetType + " " + targetField + ";\n\n", targetField);
             } else {
                 String field = plural(sourceField);
                 String annotation = "    @OneToMany(mappedBy = \"" + targetField + "\")\n    @JsonIgnore\n";
@@ -194,7 +206,8 @@ public class GeneratorService {
         }
         // For 1:1, the target/part is the deterministic owner. The whole is inverse.
         if (currentIsTarget) {
-            addField(out, fields, "    @OneToOne\n    @JoinColumn(name=\"" + sqlName(sourceField) + "_id\")\n    private " + sourceType + " " + sourceField + ";\n\n", sourceField);
+            boolean required = required(relation.getSourceMultiplicity());
+            addField(out, fields, "    @OneToOne(optional = " + !required + ")\n    @JoinColumn(name=\"" + sqlName(sourceField) + "_id\", nullable = " + !required + ", unique = true)\n    private " + sourceType + " " + sourceField + ";\n\n", sourceField);
         } else {
             String annotation = "    @OneToOne(mappedBy = \"" + sourceField + "\")\n    @JsonIgnore\n";
             addField(out, fields, annotation + "    private " + targetType + " " + targetField + ";\n\n", targetField);
@@ -225,12 +238,14 @@ public class GeneratorService {
         boolean partMany = (part.getId().equals(relation.getSourceClassId()) ? sourceMany : targetMany);
         if (partMany) {
             if (currentIsPart) {
-                addField(out, fields, "    @ManyToOne\n    @JoinColumn(name=\"" + sqlName(wholeField) + "_id\")\n    private " + wholeType + " " + wholeField + ";\n\n", wholeField);
+                boolean required = required(relation.getSourceClassId().equals(whole.getId()) ? relation.getSourceMultiplicity() : relation.getTargetMultiplicity());
+                addField(out, fields, "    @ManyToOne(optional = " + !required + ")\n    @JoinColumn(name=\"" + sqlName(wholeField) + "_id\", nullable = " + !required + ")\n    private " + wholeType + " " + wholeField + ";\n\n", wholeField);
             } else {
                 addField(out, fields, "    @OneToMany(mappedBy = \"" + wholeField + "\", cascade = CascadeType.ALL, orphanRemoval = true)\n    @JsonIgnore\n    private List<" + partType + "> " + plural(partField) + " = new ArrayList<>();\n\n", plural(partField));
             }
         } else if (currentIsPart) {
-            addField(out, fields, "    @OneToOne\n    @JoinColumn(name=\"" + sqlName(wholeField) + "_id\")\n    private " + wholeType + " " + wholeField + ";\n\n", wholeField);
+            boolean required = required(relation.getSourceClassId().equals(whole.getId()) ? relation.getSourceMultiplicity() : relation.getTargetMultiplicity());
+            addField(out, fields, "    @OneToOne(optional = " + !required + ")\n    @JoinColumn(name=\"" + sqlName(wholeField) + "_id\", nullable = " + !required + ", unique = true)\n    private " + wholeType + " " + wholeField + ";\n\n", wholeField);
         } else {
             addField(out, fields, "    @OneToOne(mappedBy = \"" + wholeField + "\", cascade = CascadeType.ALL, orphanRemoval = true)\n    @JsonIgnore\n    private " + partType + " " + partField + ";\n\n", partField);
         }
@@ -268,16 +283,22 @@ public class GeneratorService {
             String otherField = javaField(javaName(other.getName()));
             String field = collection ? plural(otherField) : otherField;
             String idField = field + (collection ? "Ids" : "Id");
-            boolean currentRequired = source ? required(relation.getSourceMultiplicity()) : required(relation.getTargetMultiplicity());
-            result.putIfAbsent(idField, new RelationSpec(field, idField, javaName(other.getName()), javaName(other.getName()) + "Repository", idType(other, classes, diagram), collection, owningSide, currentRequired));
+            boolean referencedRequired = source ? required(relation.getTargetMultiplicity()) : required(relation.getSourceMultiplicity());
+            result.putIfAbsent(idField, new RelationSpec(field, idField, javaName(other.getName()), javaName(other.getName()) + "Repository", idType(other, classes, diagram), collection, owningSide, referencedRequired));
             }
         }
         UmlRelation association = associationClassRelations.get(current.getId());
         if (association != null) {
             UmlClass source = classes.get(association.getSourceClassId());
             UmlClass target = classes.get(association.getTargetClassId());
-            if (source != null) result.putIfAbsent("sourceId", new RelationSpec("associationSource", "sourceId", javaName(source.getName()), javaName(source.getName()) + "Repository", idType(source, classes, diagram), false, true, required(association.getSourceMultiplicity())));
-            if (target != null) result.putIfAbsent("targetId", new RelationSpec("associationTarget", "targetId", javaName(target.getName()), javaName(target.getName()) + "Repository", idType(target, classes, diagram), false, true, required(association.getTargetMultiplicity())));
+            if (source != null) {
+                String field = javaField(source.getName());
+                result.putIfAbsent(field + "Id", new RelationSpec(field, field + "Id", javaName(source.getName()), javaName(source.getName()) + "Repository", idType(source, classes, diagram), false, true, true));
+            }
+            if (target != null) {
+                String field = javaField(target.getName());
+                result.putIfAbsent(field + "Id", new RelationSpec(field, field + "Id", javaName(target.getName()), javaName(target.getName()) + "Repository", idType(target, classes, diagram), false, true, true));
+            }
         }
         return new ArrayList<>(result.values());
     }
@@ -359,19 +380,52 @@ public class GeneratorService {
 
     private String dto(String base, UmlClass umlClass, boolean response, UmlDiagram diagram, Map<String, UmlClass> classes, Map<String, UmlRelation> associationClassRelations) {
         String name = javaName(umlClass.getName()) + (response ? "ResponseDto" : "RequestDto");
-        String entityName = javaName(umlClass.getName());
-        StringBuilder out = new StringBuilder("package ").append(base).append(".dto;\n\nimport java.util.*;\n\npublic class ").append(name).append(" {\n");
+        List<UmlAttribute> attributes = effectiveAttributes(umlClass, diagram, classes);
+        List<RelationSpec> relations = relationSpecs(umlClass, diagram, classes, associationClassRelations, !response);
+        Set<String> imports = dtoImports(attributes, response ? idType(umlClass, classes, diagram) : null, relations, classes);
+        StringBuilder out = new StringBuilder("package ").append(base).append(".dto;\n\n");
+        for (String importName : imports) out.append("import ").append(importName).append(";\n");
+        out.append("\npublic class ").append(name).append(" {\n");
         if (response) out.append("    private ").append(idType(umlClass, classes, diagram)).append(" id;\n");
-        for (UmlAttribute attr : effectiveAttributes(umlClass, diagram, classes)) {
+        for (UmlAttribute attr : attributes) {
             if (attr.getName() == null || attr.getName().equalsIgnoreCase("id")) continue;
             out.append("    private ").append(javaType(attr.getType(), classes)).append(' ').append(javaField(attr.getName())).append(";\n");
         }
-        for (RelationSpec spec : relationSpecs(umlClass, diagram, classes, associationClassRelations, !response)) out.append("    private ").append(spec.collection ? "List<" + spec.otherIdType + ">" : spec.otherIdType).append(' ').append(spec.idField).append(spec.collection ? " = new ArrayList<>();\n" : ";\n");
+        for (RelationSpec spec : relations) out.append("    private ").append(spec.collection ? "List<" + spec.otherIdType + ">" : spec.otherIdType).append(' ').append(spec.idField).append(spec.collection ? " = new ArrayList<>();\n" : ";\n");
         out.append("\n    public ").append(name).append("() {}\n\n");
         if (response) appendDtoAccessor(out, idType(umlClass, classes, diagram), "id");
-        for (UmlAttribute attr : effectiveAttributes(umlClass, diagram, classes)) if (attr.getName() != null && !attr.getName().equalsIgnoreCase("id")) appendDtoAccessor(out, javaType(attr.getType(), classes), javaField(attr.getName()));
-        for (RelationSpec spec : relationSpecs(umlClass, diagram, classes, associationClassRelations, !response)) appendDtoAccessor(out, spec.collection ? "List<" + spec.otherIdType + ">" : spec.otherIdType, spec.idField);
+        for (UmlAttribute attr : attributes) if (attr.getName() != null && !attr.getName().equalsIgnoreCase("id")) appendDtoAccessor(out, javaType(attr.getType(), classes), javaField(attr.getName()));
+        for (RelationSpec spec : relations) appendDtoAccessor(out, spec.collection ? "List<" + spec.otherIdType + ">" : spec.otherIdType, spec.idField);
         return out.append("}\n").toString();
+    }
+
+    private Set<String> dtoImports(List<UmlAttribute> attributes, String idType, List<RelationSpec> relations, Map<String, UmlClass> classes) {
+        Set<String> imports = new TreeSet<>();
+        Set<String> types = new LinkedHashSet<>();
+        if (idType != null) types.add(idType);
+        for (UmlAttribute attribute : attributes) {
+            if (attribute.getName() != null && !attribute.getName().equalsIgnoreCase("id")) types.add(javaType(attribute.getType(), classes));
+        }
+        for (RelationSpec relation : relations) {
+            types.add(relation.otherIdType());
+            if (relation.collection()) {
+                imports.add("java.util.ArrayList");
+                imports.add("java.util.List");
+            }
+        }
+        Map<String, String> knownImports = Map.of(
+                "LocalDate", "java.time.LocalDate",
+                "LocalDateTime", "java.time.LocalDateTime",
+                "LocalTime", "java.time.LocalTime",
+                "Instant", "java.time.Instant",
+                "OffsetDateTime", "java.time.OffsetDateTime",
+                "BigDecimal", "java.math.BigDecimal",
+                "UUID", "java.util.UUID");
+        for (String type : types) {
+            String importName = knownImports.get(type);
+            if (importName != null) imports.add(importName);
+        }
+        return imports;
     }
 
     private void appendDtoAccessor(StringBuilder out, String type, String field) {
@@ -540,8 +594,8 @@ public class GeneratorService {
             if (relation != null) {
                 UmlClass source = classes.get(relation.getSourceClassId());
                 UmlClass target = classes.get(relation.getTargetClassId());
-                if (source != null) fields.add(runtimeRelationField("source", source, required(relation.getSourceMultiplicity()), true));
-                if (target != null) fields.add(runtimeRelationField("target", target, required(relation.getTargetMultiplicity()), true));
+                if (source != null) fields.add(runtimeRelationField(javaField(source.getName()), source, true, true));
+                if (target != null) fields.add(runtimeRelationField(javaField(target.getName()), target, true, true));
             }
         }
         return fields;
@@ -680,16 +734,23 @@ public class GeneratorService {
         boolean child = diagram.getRelations().stream().anyMatch(r -> r.getType() == RelationType.INHERITANCE && candidate.getId().equals(r.getSourceClassId()));
         return parent && !child;
     }
-    private String javaType(String type, Map<String, UmlClass> classes) { if (type == null || type.isBlank()) return "String"; String t = type.trim(); for (UmlClass c : classes.values()) if (c.getName().equalsIgnoreCase(t)) return javaName(c.getName()); return switch (t.toLowerCase(Locale.ROOT)) { case "string" -> "String"; case "integer", "int" -> "Integer"; case "long" -> "Long"; case "boolean" -> "Boolean"; case "double" -> "Double"; case "float" -> "Float"; case "date", "localdate" -> "LocalDate"; case "datetime", "localdatetime" -> "LocalDateTime"; case "bigdecimal" -> "BigDecimal"; case "uuid" -> "UUID"; default -> "String"; }; }
+    private String javaType(String type, Map<String, UmlClass> classes) { if (type == null || type.isBlank()) return "String"; String t = type.trim(); for (UmlClass c : classes.values()) if (c.getName().equalsIgnoreCase(t)) return javaName(c.getName()); return switch (t.toLowerCase(Locale.ROOT)) { case "string" -> "String"; case "integer", "int" -> "Integer"; case "long" -> "Long"; case "boolean" -> "Boolean"; case "double" -> "Double"; case "float" -> "Float"; case "date", "localdate" -> "LocalDate"; case "datetime", "localdatetime" -> "LocalDateTime"; case "time", "localtime" -> "LocalTime"; case "instant" -> "Instant"; case "offsetdatetime" -> "OffsetDateTime"; case "bigdecimal" -> "BigDecimal"; case "uuid" -> "UUID"; default -> "String"; }; }
     private boolean many(Multiplicity m) { return m != null && ("*".equals(m.getUpper()) || (m.getUpper() != null && m.getUpper().contains("*"))); }
-    private boolean required(Multiplicity m) { return m != null && "1".equals(m.getLower()); }
+    private boolean required(Multiplicity m) {
+        if (m == null || m.getLower() == null) return false;
+        try {
+            return Integer.parseInt(m.getLower().trim()) >= 1;
+        } catch (NumberFormatException exception) {
+            return false;
+        }
+    }
     private String defaultReturn(String type) { return "boolean".equals(type) || "Boolean".equals(type) ? "false" : "int".equals(type) || "Integer".equals(type) || "long".equals(type) || "Long".equals(type) || "double".equals(type) || "Double".equals(type) ? "0" : "void".equals(type) ? "null" : "null"; }
     private String methodBody(String type) { return "void".equals(type) ? "        return;\n" : "        return " + defaultReturn(type) + ";\n"; }
     private String defaultValue(UmlAttribute a) { return a.getDefaultValue() == null || a.getDefaultValue().isBlank() ? "" : " = " + a.getDefaultValue(); }
-    private String javaName(String value) { if (value == null || value.isBlank()) return "Unnamed"; StringBuilder result = new StringBuilder(); for (String part : value.replaceAll("[^A-Za-z0-9_$]+", " ").trim().split(" +")) if (!part.isBlank()) result.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1)); return result.length() == 0 ? "Unnamed" : result.toString(); }
-    private String javaField(String value) { String n = javaName(value); return Character.toLowerCase(n.charAt(0)) + n.substring(1); }
+    private String javaName(String value) { return IdentifierSanitizer.pascal(value); }
+    private String javaField(String value) { return IdentifierSanitizer.camel(value); }
     private String plural(String value) { String n = javaField(value); return n.endsWith("s") ? n : n + "s"; }
-    private String sqlName(String value) { return javaField(value).replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT); }
+    private String sqlName(String value) { return IdentifierSanitizer.snake(value); }
     private String safeArtifact(String requested, String fallback) { String source = requested == null || requested.isBlank() ? fallback : requested; String result = source == null ? "generated-backend" : source.replaceAll("[^A-Za-z0-9_-]", "-").replaceAll("-+", "-"); return result.isBlank() ? "generated-backend" : result.toLowerCase(Locale.ROOT); }
     private String xml(String value) { return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); }
     private void put(ZipOutputStream zip, String name, String content) throws Exception { zip.putNextEntry(new ZipEntry(name)); zip.write(content.getBytes(StandardCharsets.UTF_8)); zip.closeEntry(); }
