@@ -164,7 +164,11 @@ public class GeneratorService {
     private void appendRelationFields(StringBuilder out, Set<String> fields, UmlClass current, UmlRelation relation, Map<String, UmlClass> classes) {
         UmlClass source = classes.get(relation.getSourceClassId());
         UmlClass target = classes.get(relation.getTargetClassId());
-        if (source == null || target == null || source.getId().equals(target.getId())) return;
+        if (source == null || target == null) return;
+        if (source.getId().equals(target.getId())) {
+            appendRecursiveRelationFields(out, fields, relation, source);
+            return;
+        }
         boolean currentIsSource = current.getId().equals(source.getId());
         boolean currentIsTarget = current.getId().equals(target.getId());
         if (!currentIsSource && !currentIsTarget) return;
@@ -211,6 +215,28 @@ public class GeneratorService {
         } else {
             String annotation = "    @OneToOne(mappedBy = \"" + sourceField + "\")\n    @JsonIgnore\n";
             addField(out, fields, annotation + "    private " + targetType + " " + targetField + ";\n\n", targetField);
+        }
+    }
+
+    private void appendRecursiveRelationFields(StringBuilder out, Set<String> fields, UmlRelation relation, UmlClass type) {
+        boolean sourceMany = many(relation.getSourceMultiplicity());
+        boolean targetMany = many(relation.getTargetMultiplicity());
+        if (sourceMany && targetMany) return;
+        String typeName = javaName(type.getName());
+        String sourceField = relationField(relation.getSourceRole(), type.getName());
+        String targetField = relationField(relation.getTargetRole(), type.getName());
+        if (targetMany) {
+            boolean required = required(relation.getSourceMultiplicity());
+            addField(out, fields, "    @ManyToOne(optional = " + !required + ")\n    @JoinColumn(name=\"" + sqlName(sourceField) + "_id\", nullable = " + !required + ")\n    private " + typeName + " " + sourceField + ";\n\n", sourceField);
+            addField(out, fields, "    @OneToMany(mappedBy = \"" + sourceField + "\")\n    @JsonIgnore\n    private List<" + typeName + "> " + targetField + " = new ArrayList<>();\n\n", targetField);
+        } else if (sourceMany) {
+            boolean required = required(relation.getTargetMultiplicity());
+            addField(out, fields, "    @ManyToOne(optional = " + !required + ")\n    @JoinColumn(name=\"" + sqlName(targetField) + "_id\", nullable = " + !required + ")\n    private " + typeName + " " + targetField + ";\n\n", targetField);
+            addField(out, fields, "    @OneToMany(mappedBy = \"" + targetField + "\")\n    @JsonIgnore\n    private List<" + typeName + "> " + sourceField + " = new ArrayList<>();\n\n", sourceField);
+        } else {
+            boolean required = required(relation.getSourceMultiplicity());
+            addField(out, fields, "    @OneToOne(optional = " + !required + ")\n    @JoinColumn(name=\"" + sqlName(sourceField) + "_id\", nullable = " + !required + ", unique = true)\n    private " + typeName + " " + sourceField + ";\n\n", sourceField);
+            addField(out, fields, "    @OneToOne(mappedBy = \"" + sourceField + "\")\n    @JsonIgnore\n    private " + typeName + " " + targetField + ";\n\n", targetField);
         }
     }
 
@@ -274,9 +300,13 @@ public class GeneratorService {
             boolean target = Objects.equals(declaringClass.getId(), relation.getTargetClassId());
             if (!source && !target) continue;
             UmlClass other = classes.get(source ? relation.getTargetClassId() : relation.getSourceClassId());
-            if (other == null || Objects.equals(other.getId(), current.getId())) continue;
+            if (other == null) continue;
             boolean sourceMany = many(relation.getSourceMultiplicity());
             boolean targetMany = many(relation.getTargetMultiplicity());
+            if (Objects.equals(relation.getSourceClassId(), relation.getTargetClassId())) {
+                addRecursiveRelationSpecs(result, relation, other, classes, diagram, requestOnly);
+                continue;
+            }
             boolean collection = sourceMany && targetMany || source && targetMany || target && sourceMany;
             boolean owningSide = isOwningSide(declaringClass, relation, sourceMany, targetMany);
             if (requestOnly && !owningSide) continue;
@@ -301,6 +331,30 @@ public class GeneratorService {
             }
         }
         return new ArrayList<>(result.values());
+    }
+
+        private void addRecursiveRelationSpecs(Map<String, RelationSpec> result, UmlRelation relation, UmlClass type,
+            Map<String, UmlClass> classes, UmlDiagram diagram, boolean requestOnly) {
+        boolean sourceMany = many(relation.getSourceMultiplicity());
+        boolean targetMany = many(relation.getTargetMultiplicity());
+        if (sourceMany && targetMany) return;
+        String sourceField = relationField(relation.getSourceRole(), type.getName());
+        String targetField = relationField(relation.getTargetRole(), type.getName());
+        String typeName = javaName(type.getName());
+        if (targetMany) {
+            if (!requestOnly) result.putIfAbsent(targetField + "Ids", new RelationSpec(targetField, targetField + "Ids", typeName, typeName + "Repository", idType(type, classes, diagram), true, false, false));
+            result.putIfAbsent(sourceField + "Id", new RelationSpec(sourceField, sourceField + "Id", typeName, typeName + "Repository", idType(type, classes, diagram), false, true, required(relation.getSourceMultiplicity())));
+        } else if (sourceMany) {
+            if (!requestOnly) result.putIfAbsent(sourceField + "Ids", new RelationSpec(sourceField, sourceField + "Ids", typeName, typeName + "Repository", idType(type, classes, diagram), true, false, false));
+            result.putIfAbsent(targetField + "Id", new RelationSpec(targetField, targetField + "Id", typeName, typeName + "Repository", idType(type, classes, diagram), false, true, required(relation.getTargetMultiplicity())));
+        } else {
+            if (!requestOnly) result.putIfAbsent(targetField + "Id", new RelationSpec(targetField, targetField + "Id", typeName, typeName + "Repository", idType(type, classes, diagram), false, false, false));
+            result.putIfAbsent(sourceField + "Id", new RelationSpec(sourceField, sourceField + "Id", typeName, typeName + "Repository", idType(type, classes, diagram), false, true, required(relation.getSourceMultiplicity())));
+        }
+    }
+
+    private String relationField(String role, String className) {
+        return role == null || role.isBlank() ? javaField(className) : javaField(role);
     }
 
     private Set<String> effectiveClassIds(UmlClass current, UmlDiagram diagram) {
