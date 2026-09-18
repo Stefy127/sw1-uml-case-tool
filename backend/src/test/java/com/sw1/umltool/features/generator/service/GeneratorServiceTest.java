@@ -11,10 +11,14 @@ import com.sw1.umltool.features.diagram.model.persistence.DiagramEntity;
 import com.sw1.umltool.features.diagram.service.DiagramStateSerializer;
 import com.sw1.umltool.features.generator.dto.GenerateBackendRequest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.stream.Stream;
 import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -190,11 +194,11 @@ class GeneratorServiceTest {
                 && runtime.contains("\\\"name\\\":\\\"materiasIds\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":false,\\\"editable\\\":false,\\\"readOnly\\\":true,\\\"nullable\\\":true")
                 && runtime.contains("\\\"collection\\\":true")
                 && runtime.contains("\\\"requestField\\\":null"));
-        assertTrue(runtime.contains("\\\"name\\\":\\\"sourceId\\\",\\\"type\\\":\\\"relation\\\"")
+        assertTrue(runtime.contains("\\\"name\\\":\\\"alumnoId\\\",\\\"type\\\":\\\"relation\\\"")
                 && runtime.contains("\\\"targetEntity\\\":\\\"Alumno\\\""));
-        assertTrue(runtime.contains("\\\"name\\\":\\\"sourceId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":true,\\\"editable\\\":true,\\\"readOnly\\\":false")
-                && runtime.contains("\\\"requestField\\\":\\\"sourceId\\\""));
-        assertTrue(runtime.contains("\\\"name\\\":\\\"targetId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":false,\\\"editable\\\":true,\\\"readOnly\\\":false,\\\"nullable\\\":true"));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"alumnoId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":true,\\\"editable\\\":true,\\\"readOnly\\\":false")
+                && runtime.contains("\\\"requestField\\\":\\\"alumnoId\\\""));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"materiaId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":true,\\\"editable\\\":true,\\\"readOnly\\\":false,\\\"nullable\\\":false"));
         assertTrue(runtime.contains("\\\"name\\\":\\\"nombre\\\",\\\"type\\\":\\\"string\\\""));
         assertFalse(runtime.contains("\\\"targetEntity\\\":\\\"Dependency\\\""));
     }
@@ -227,6 +231,39 @@ class GeneratorServiceTest {
 
         assertTrue(runtime.contains("\\\"name\\\":\\\"carreraId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":true,\\\"editable\\\":true,\\\"readOnly\\\":false,\\\"nullable\\\":false"));
         assertTrue(runtime.contains("\\\"name\\\":\\\"aulaId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":false,\\\"editable\\\":false,\\\"readOnly\\\":true,\\\"nullable\\\":true"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("runtimeCardinalities")
+    void runtimeSchemaMatchesJpaRequirednessForTheSameOwningRelation(String sourceLower, String targetUpper,
+            boolean expectedRequired) throws Exception {
+        UmlClass source = UmlClass.builder().id("source").name("Cliente").build();
+        UmlClass target = UmlClass.builder().id("target").name("Mascota").build();
+        UmlRelation relation = UmlRelation.builder().id("r1").sourceClassId("source").targetClassId("target")
+                .type(RelationType.ASSOCIATION)
+                .sourceMultiplicity(new Multiplicity(sourceLower, "1"))
+                .targetMultiplicity(new Multiplicity("0", targetUpper)).build();
+        UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(source, target))
+                .relations(List.of(relation)).build();
+
+        byte[] zip = generate(mockSerializer(diagram), null);
+        String entity = entry(zip, "generated-backend/src/main/java/com/generated/app/entity/Mascota.java");
+        String runtime = entry(zip, "generated-backend/src/main/java/com/generated/app/controller/RuntimeSchemaController.java");
+        String association = "*".equals(targetUpper) ? "@ManyToOne" : "@OneToOne";
+        String unique = "*".equals(targetUpper) ? ")" : ", unique = true)";
+        String expectedJpa = association + "(optional = " + !expectedRequired + ")\n    @JoinColumn(name=\"cliente_id\", nullable = "
+                + !expectedRequired + unique;
+        assertTrue(entity.contains(expectedJpa), entity);
+        String expectedRuntime = "\\\"name\\\":\\\"clienteId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":"
+                + expectedRequired + ",\\\"editable\\\":true,\\\"readOnly\\\":false,\\\"nullable\\\":"
+                + !expectedRequired + ",\\\"collection\\\":" + ("*".equals(targetUpper) ? "false" : "false")
+                + ",\\\"relation\\\":true";
+        assertTrue(runtime.contains(expectedRuntime), runtime);
+    }
+
+    private static Stream<Arguments> runtimeCardinalities() {
+        return Stream.of(Arguments.of("1", "*", true), Arguments.of("0", "*", false),
+                Arguments.of("1", "1", true), Arguments.of("0", "1", false));
     }
 
     @Test
@@ -288,13 +325,118 @@ class GeneratorServiceTest {
         String materiaService = entry(zip, "generated-backend/src/main/java/com/generated/app/service/MateriaService.java");
         String associationDto = entry(zip, "generated-backend/src/main/java/com/generated/app/dto/InscripcionRequestDto.java");
         String associationService = entry(zip, "generated-backend/src/main/java/com/generated/app/service/InscripcionService.java");
+        String associationEntity = entry(zip, "generated-backend/src/main/java/com/generated/app/entity/Inscripcion.java");
         assertFalse(alumnoDto.contains("materiaId") || alumnoDto.contains("materiasIds"));
         assertFalse(materiaDto.contains("alumnoId") || materiaDto.contains("alumnosIds"));
         assertFalse(alumnoService.contains("MateriaRepository") || alumnoService.contains("setMaterias"));
         assertFalse(materiaService.contains("AlumnoRepository") || materiaService.contains("setAlumnos"));
-        assertTrue(associationDto.contains("sourceId") && associationDto.contains("targetId"));
+                assertTrue(associationDto.contains("materiaId") && associationDto.contains("alumnoId"));
         assertTrue(associationService.contains("MateriaRepository") && associationService.contains("AlumnoRepository"));
+                assertTrue(associationEntity.contains("private Materia materia;") && associationEntity.contains("private Alumno alumno;"));
+                assertTrue(associationEntity.contains("@ManyToOne(optional = false)")
+                        && associationEntity.contains("@JoinColumn(name=\"materia_id\", nullable = false)"));
+                assertTrue(associationEntity.contains("uniqueConstraints = @UniqueConstraint(columnNames = {\"alumno_id\", \"materia_id\"})"));
     }
+
+        @ParameterizedTest
+        @MethodSource("cardinalities")
+        void relationForeignKeyNullabilityFollowsReferencedMultiplicity(String sourceLower, String targetLower, boolean expectedRequired) throws Exception {
+                UmlClass source = UmlClass.builder().id("source").name("Cliente").build();
+                UmlClass target = UmlClass.builder().id("target").name("Mascota").build();
+                UmlRelation relation = UmlRelation.builder().id("r1").sourceClassId("source").targetClassId("target")
+                                .type(RelationType.ASSOCIATION).sourceMultiplicity(new Multiplicity(sourceLower, targetLower.equals("*") ? "1" : "1"))
+                                .targetMultiplicity(new Multiplicity(targetLower.equals("*") ? "0" : targetLower, targetLower)).build();
+                UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(source, target)).relations(List.of(relation)).build();
+                String entity = entry(generate(mockSerializer(diagram), null), "generated-backend/src/main/java/com/generated/app/entity/Mascota.java");
+                String association = "*".equals(targetLower) ? "@ManyToOne" : "@OneToOne";
+                String unique = "*".equals(targetLower) ? ")" : ", unique = true)";
+                assertPairedNullability(entity, association, "cliente_id", expectedRequired, unique);
+        }
+
+        private static Stream<Arguments> cardinalities() {
+                return Stream.of(Arguments.of("1", "*", true), Arguments.of("0", "*", false),
+                                Arguments.of("1", "1", true), Arguments.of("0", "1", false));
+        }
+
+        @Test
+        void oneToOneForeignKeyIsUniqueAndUsesReferencedMultiplicity() throws Exception {
+                UmlClass cita = UmlClass.builder().id("cita").name("Cita").build();
+                UmlClass consulta = UmlClass.builder().id("consulta").name("Consulta").build();
+                UmlRelation relation = UmlRelation.builder().id("r1").sourceClassId("cita").targetClassId("consulta")
+                                .type(RelationType.ASSOCIATION).sourceMultiplicity(new Multiplicity("1", "1"))
+                                .targetMultiplicity(new Multiplicity("0", "1")).build();
+                UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(cita, consulta)).relations(List.of(relation)).build();
+                String entity = entry(generate(mockSerializer(diagram), null), "generated-backend/src/main/java/com/generated/app/entity/Consulta.java");
+                assertPairedNullability(entity, "@OneToOne", "cita_id", true, ", unique = true)");
+        }
+
+        @Test
+        void identifiersNormalizeDiacriticsAndSpecialIdAcrossGeneratedSurfaces() throws Exception {
+                UmlClass clase = UmlClass.builder().id("clase").name("Ficha").attributes(List.of(
+                                UmlAttribute.builder().id("id").name("ID").type("Long").build(),
+                                UmlAttribute.builder().id("description").name("Descripción").type("String").build(),
+                                UmlAttribute.builder().id("address").name("Dirección").type("String").build())).build();
+                UmlClass owner = UmlClass.builder().id("owner").name("Owner").build();
+                UmlRelation relation = UmlRelation.builder().id("r1").sourceClassId("owner").targetClassId("clase")
+                                .type(RelationType.ASSOCIATION).sourceMultiplicity(new Multiplicity("1", "1"))
+                                .targetMultiplicity(new Multiplicity("0", "*" )).build();
+                UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(clase, owner)).relations(List.of(relation)).build();
+                byte[] zip = generate(mockSerializer(diagram), null);
+                String entity = entry(zip, "generated-backend/src/main/java/com/generated/app/entity/Ficha.java");
+                String dto = entry(zip, "generated-backend/src/main/java/com/generated/app/dto/FichaResponseDto.java");
+                String runtime = entry(zip, "generated-backend/src/main/java/com/generated/app/controller/RuntimeSchemaController.java");
+                assertTrue(entity.contains("private Long id;") && entity.contains("getId()") && entity.contains("setId(Long id)"));
+                assertTrue(entity.contains("private String descripcion;") && entity.contains("private String direccion;"));
+                assertTrue(dto.contains("private String descripcion;") && dto.contains("getDescripcion()"));
+                assertTrue(runtime.contains("\\\"idField\\\":\\\"id\\\"") && runtime.contains("\\\"name\\\":\\\"descripcion\\\""));
+                assertFalse(entity.contains("descripciN"));
+        }
+
+    @Test
+    void dtoImportsAllJavaTypesUsedByRequestAndResponse() throws Exception {
+        UmlClass registro = UmlClass.builder().id("registro").name("Registro").attributes(List.of(
+                UmlAttribute.builder().id("fecha").name("fechaNacimiento").type("LocalDate").build(),
+                UmlAttribute.builder().id("hora").name("fechaHora").type("LocalDateTime").build(),
+                UmlAttribute.builder().id("precio").name("precio").type("BigDecimal").build())).build();
+        UmlClass owner = UmlClass.builder().id("owner").name("Owner").build();
+        UmlRelation relation = UmlRelation.builder().id("r1").sourceClassId("owner").targetClassId("registro")
+                .type(RelationType.ASSOCIATION).sourceMultiplicity(new Multiplicity("1", "1"))
+                .targetMultiplicity(new Multiplicity("0", "*" )).build();
+        UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(owner, registro)).relations(List.of(relation)).build();
+        byte[] zip = generate(mockSerializer(diagram), null);
+
+        String request = entry(zip, "generated-backend/src/main/java/com/generated/app/dto/RegistroRequestDto.java");
+        String response = entry(zip, "generated-backend/src/main/java/com/generated/app/dto/RegistroResponseDto.java");
+        for (String dto : List.of(request, response)) {
+            assertTrue(dto.contains("import java.time.LocalDate;"), dto);
+            assertTrue(dto.contains("import java.time.LocalDateTime;"), dto);
+            assertTrue(dto.contains("import java.math.BigDecimal;"), dto);
+        }
+    }
+
+    @Test
+    void dtoDoesNotImportUnusedDateTypes() throws Exception {
+        UmlClass simple = UmlClass.builder().id("simple").name("Simple").attributes(List.of(
+                UmlAttribute.builder().id("name").name("name").type("String").build(),
+                UmlAttribute.builder().id("count").name("count").type("Integer").build())).build();
+        UmlClass owner = UmlClass.builder().id("owner").name("Owner").build();
+        UmlRelation relation = UmlRelation.builder().id("r1").sourceClassId("owner").targetClassId("simple")
+                .type(RelationType.ASSOCIATION).sourceMultiplicity(new Multiplicity("1", "1"))
+                .targetMultiplicity(new Multiplicity("0", "*" )).build();
+        UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(owner, simple)).relations(List.of(relation)).build();
+        String request = entry(generate(mockSerializer(diagram), null), "generated-backend/src/main/java/com/generated/app/dto/SimpleRequestDto.java");
+
+        assertFalse(request.contains("import java.time."));
+        assertFalse(request.contains("import java.math.BigDecimal;"));
+        assertFalse(request.contains("import java.util.List;"));
+        assertFalse(request.contains("import java.util.ArrayList;"));
+    }
+
+        private void assertPairedNullability(String entity, String association, String column, boolean required, String suffix) {
+                String expected = association + "(optional = " + !required + ")\n    @JoinColumn(name=\"" + column
+                        + "\", nullable = " + !required + suffix;
+                assertTrue(entity.contains(expected), entity);
+        }
 
     @Test
     void aggregationGeneratesOnlyPartForeignKey() throws Exception {
@@ -330,6 +472,7 @@ class GeneratorServiceTest {
         assertTrue(whole.contains("cascade = CascadeType.ALL") && whole.contains("orphanRemoval = true"));
         assertFalse(whole.contains("@JoinColumn"));
         assertEquals(1, part.split("@JoinColumn", -1).length - 1);
+        assertTrue(part.contains("@OneToOne(optional = false)\n    @JoinColumn(name=\"curso_id\", nullable = false, unique = true)"));
         assertTrue(whole.contains("@JsonIgnore"));
     }
 
@@ -346,8 +489,21 @@ class GeneratorServiceTest {
         assertTrue(whole.contains("@OneToMany(mappedBy = \"curso\", cascade = CascadeType.ALL, orphanRemoval = true)"));
         assertFalse(whole.contains("@JoinColumn"));
         assertTrue(part.contains("@ManyToOne"));
+                assertTrue(part.contains("@ManyToOne(optional = false)\n    @JoinColumn(name=\"curso_id\", nullable = false)"));
         assertEquals(1, part.split("@JoinColumn", -1).length - 1);
     }
+
+        @Test
+        void optionalCompositionForeignKeyKeepsOptionalAndNullableInSync() throws Exception {
+                UmlClass curso = UmlClass.builder().id("curso").name("Curso").build();
+                UmlClass horario = UmlClass.builder().id("horario").name("Horario").build();
+                UmlRelation relation = UmlRelation.builder().id("r1").sourceClassId("horario").targetClassId("curso")
+                                .type(RelationType.COMPOSITION).sourceMultiplicity(new Multiplicity("0", "1"))
+                                .targetMultiplicity(new Multiplicity("0", "1")).build();
+                UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(curso, horario)).relations(List.of(relation)).build();
+                String part = entry(generate(mockSerializer(diagram), null), "generated-backend/src/main/java/com/generated/app/entity/Horario.java");
+                assertTrue(part.contains("@OneToOne(optional = true)\n    @JoinColumn(name=\"curso_id\", nullable = true, unique = true)"));
+        }
 
     private DiagramStateSerializer mockSerializer(UmlDiagram diagram) {
         DiagramStateSerializer serializer = mock(DiagramStateSerializer.class);
