@@ -31,7 +31,7 @@
       >
     </div>
     <div class="sidebar-foot">
-      <a class="nav-item" routerLink="/projects"
+      <a class="nav-item" routerLink="/help"
         ><span class="nav-icon">?</span><span>Ayuda y recursos</span></a
       ><a class="nav-item" routerLink="/account"
         ><span class="nav-icon">⚙</span><span>Configuración</span></a
@@ -43,7 +43,7 @@
       <button class="mobile-menu" (click)="collapsed = !collapsed">☰</button>
       <div class="top-search">⌕ <span>Buscar proyectos...</span></div>
       <div class="top-actions">
-        @if (auth.authLoading()) { <span class="auth-loading">Cargando...</span> } @else if (auth.currentUser(); as user) { <span class="bell">♧</span><button class="account-trigger" (click)="toggleUserMenu()" aria-label="Abrir menú de cuenta"><span class="avatar rose">{{ initials }}</span><span class="user-name">{{ user.firstName }}</span><span class="chevron">⌄</span></button>@if (userMenuOpen) { <div class="account-menu"><strong>{{ user.firstName }} {{ user.lastName }}</strong><small>{{ user.email }}</small><a routerLink="/projects">Mis proyectos</a><a routerLink="/account">Configuración de cuenta</a><a routerLink="/appearance">Apariencia</a><button (click)="auth.logout()">Cerrar sesión</button></div> } } @else { <a class="auth-link" routerLink="/login">Iniciar sesión</a><a class="auth-register" routerLink="/register">Regístrate</a> }
+        @if (auth.authLoading()) { <span class="auth-loading">Cargando...</span> } @else if (auth.currentUser(); as user) { <button class="account-trigger" (click)="toggleUserMenu()" aria-label="Abrir menú de cuenta"><span class="avatar rose">{{ initials }}</span><span class="user-name">{{ user.firstName }}</span><span class="chevron">⌄</span></button>@if (userMenuOpen) { <div class="account-menu"><strong>{{ user.firstName }} {{ user.lastName }}</strong><small>{{ user.email }}</small><a routerLink="/projects"><span aria-hidden="true">▱</span> Mis proyectos</a><a routerLink="/account"><span aria-hidden="true">⚙</span> Configuración de cuenta</a><a routerLink="/appearance"><span aria-hidden="true">◌</span> Apariencia</a><button class="logout-item" (click)="auth.logout()"><span aria-hidden="true">↪</span> Cerrar sesión</button></div> } } @else { <a class="auth-link" routerLink="/login">Iniciar sesión</a><a class="auth-register" routerLink="/register">Regístrate</a> }
       </div>
     </header>
     <router-outlet />

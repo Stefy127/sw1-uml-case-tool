@@ -11,6 +11,7 @@ import { ProjectsPageComponent } from './features/projects/pages/projects/projec
 import { SharedPageComponent } from './features/shared/pages/shared/shared-page.component';
 import { TemplatesPageComponent } from './features/templates/pages/templates/templates-page.component';
 import { SharedLinkPageComponent } from './features/shared/pages/shared-link/shared-link-page.component';
+import { HelpPageComponent } from './features/help/pages/help/help-page.component';
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
@@ -30,6 +31,7 @@ export const routes: Routes = [
       { path: 'shared', component: SharedPageComponent },
       { path: 'shared/:token', component: SharedLinkPageComponent, canActivate: [authGuard] },
       { path: 'templates', component: TemplatesPageComponent },
+      { path: 'help', component: HelpPageComponent },
     ],
   },
   { path: '**', redirectTo: 'dashboard' },

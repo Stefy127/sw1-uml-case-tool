@@ -148,6 +148,9 @@
   font-size: 70px;
   color: #fff8;
 }
+.uml-art-card { width: min(430px, 80%); }
+.uml-art-diagram { position: relative; min-height: 205px; margin-top: 12px; }
+.mini-uml { position:absolute; display:grid; gap:5px; width:132px; padding:11px; border:1px solid #d8d1fb; border-radius:10px; background:#fff; box-shadow:var(--shadow-sm); font-size:11px; }.mini-uml b { padding-bottom:5px; border-bottom:1px solid #e9e7f1; color:var(--color-primary); }.mini-uml span { color:var(--color-text-muted); }.user-box { left:0; top:25px; }.project-box { right:0; top:0; }.diagram-box { right:42px; bottom:0; }.uml-link { position:absolute; height:1px; transform-origin:left center; background:#a9a0e9; }.link-one { top:58px; left:130px; width:166px; transform:rotate(-16deg); }.link-two { top:100px; left:132px; width:160px; transform:rotate(23deg); }
 @media (max-width: 700px) {
   .login-page {
     display: block;

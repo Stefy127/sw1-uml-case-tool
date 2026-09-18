@@ -94,4 +94,9 @@ export class ProjectsPageComponent {
   formatDate(value: string): string {
     return value ? new Date(value).toLocaleDateString('es-ES') : 'Sin actividad';
   }
+
+  todayLabel(): string {
+    return new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      .format(new Date()).toUpperCase();
+  }
 }

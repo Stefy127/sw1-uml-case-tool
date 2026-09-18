@@ -116,6 +116,8 @@
 .account-menu strong { font-size: 13px; }
 .account-menu small { color: var(--color-text-muted); }
 .account-menu a,.account-menu button { padding: 7px 4px; border: 0; color: var(--color-text-muted); background: transparent; text-align: left; font: inherit; font-size: 12px; }
+.account-menu a span,.account-menu button span { display:inline-block; width:22px; color:var(--color-primary); }
+.account-menu .logout-item { margin-top:4px; padding-top:11px; border-top:1px solid var(--color-border); }
 .account-menu a:hover,.account-menu button:hover { color: var(--color-primary); }
 .auth-link,.auth-register { padding: 9px 13px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 700; }
 .auth-link { color: var(--color-primary); }
