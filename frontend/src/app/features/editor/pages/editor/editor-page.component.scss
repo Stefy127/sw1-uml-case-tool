@@ -165,6 +165,7 @@
   grid-column: 1/-1;
 }
 .uml-lines {
+  position: relative;
   display: grid;
   gap: 8px;
   padding: 14px 15px;
@@ -335,6 +336,7 @@
   font-size: 12px;
   cursor: pointer;
 }
+.uml-quick-add { position:absolute; top:8px; right:8px; z-index:1; opacity:.7; }
 .add-attribute:disabled,
 .attribute-row-actions button:disabled {
   cursor: not-allowed;

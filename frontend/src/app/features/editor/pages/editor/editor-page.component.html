@@ -176,7 +176,11 @@
             <span>•••</span>
             <small>{{ isAbstract(item.umlClass) ? 'Abstracta' : 'Entidad' }}</small>
           </header>
-          <div class="uml-lines" [style.background-color]="item.bodyColor || null">
+          <div class="uml-lines" [style.background-color]="item.bodyColor || null"
+            (dblclick)="quickAddAttribute(item.umlClass, $event)">
+            <button type="button" class="add-attribute uml-quick-add" aria-label="Agregar atributo" title="Agregar atributo"
+              (pointerdown)="$event.stopPropagation()"
+              (click)="quickAddAttribute(item.umlClass, $event)">+</button>
             @if (item.umlClass.attributes.length === 0) {
               <span class="empty-line">Sin atributos</span>
             }

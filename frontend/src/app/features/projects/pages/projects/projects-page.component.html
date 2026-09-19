@@ -1,9 +1,9 @@
 <div class="page dashboard">
   <div class="welcome">
     <div>
-      <span class="eyebrow">MARTES, 18 DE JUNIO DE 2024</span>
+      <span class="eyebrow">{{ todayLabel() }}</span>
       <h1>{{ auth?.currentUser() ? 'Buenos días, ' + auth?.currentUser()?.firstName : 'Bienvenido a SW1 UML' }} <b>✦</b></h1>
-      <p>Diseña, colabora y construye algo increíble hoy.</p>
+      <p>Diseña, colabora y convierte tus ideas en sistemas.</p>
     </div>
     <button class="btn btn-primary" (click)="openCreate()">＋ Nuevo proyecto</button>
   </div>
@@ -11,8 +11,8 @@
   <div class="tip">
     <span class="tip-icon">✧</span>
     <div>
-      <strong>Tu espacio creativo está listo</strong>
-      <p>Continúa donde lo dejaste o empieza un nuevo diseño desde cero.</p>
+      <strong>Tu espacio de modelado está listo</strong>
+      <p>Continúa tu último diagrama o comienza un nuevo modelo UML.</p>
     </div>
     <a routerLink="/projects">Ver proyectos　›</a>
   </div>
@@ -39,7 +39,7 @@
   } @else if (error()) {
     <p class="state-message error-message">{{ error() }}</p>
   } @else if (filtered().length === 0) {
-    <p class="muted state-message">No hay proyectos para mostrar.</p>
+    <section class="empty-projects state-message"><span class="state-icon">◇</span><strong>No hay proyectos todavía.</strong><p>Crea un proyecto para empezar a modelar tu próximo sistema.</p><button class="btn btn-soft" type="button" (click)="openCreate()">＋ Crear proyecto</button></section>
   }
 
   <div class="cards-grid project-grid">

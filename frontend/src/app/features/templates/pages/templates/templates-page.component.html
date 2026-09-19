@@ -1,0 +1,12 @@
+<div class="page templates-page">
+  <header class="templates-heading"><div><span class="eyebrow">WORKSPACE</span><h1>Plantillas UML</h1><p class="muted">Empieza con una estructura conocida y adáptala a tu modelo.</p></div><span class="template-count">{{ templates.length }} disponibles</span></header>
+  @if (error()) { <p class="template-error">{{ error() }}</p> }
+  <div class="template-grid">
+    @for (template of templates; track template.name) {
+      <article class="card template-card">
+        <div class="template-cover" [class]="template.color"><span class="template-icon">{{ template.icon }}</span><span class="tag">UML</span></div>
+        <div class="template-body"><h2>{{ template.name }}</h2><p>{{ template.description }}</p><div class="template-meta"><span>{{ template.classes.length }} clases</span><span>{{ template.relations }} relaciones</span></div><div class="template-classes">@for (className of template.classes; track className) { <span>{{ className }}</span> }</div><button class="btn btn-primary" type="button" [disabled]="!!creating()" (click)="useTemplate(template)">{{ creating() === template.name ? 'Creando...' : 'Usar plantilla' }} <span aria-hidden="true">→</span></button></div>
+      </article>
+    }
+  </div>
+</div>

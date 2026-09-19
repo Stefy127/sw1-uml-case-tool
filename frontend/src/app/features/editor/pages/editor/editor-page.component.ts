@@ -1781,6 +1781,13 @@ export class EditorPageComponent implements OnDestroy {
     });
   }
 
+  quickAddAttribute(umlClass: UmlClass, event: MouseEvent): void {
+    event.stopPropagation();
+    this.selectedClassId.set(umlClass.id);
+    this.selectedRelationId.set(null);
+    this.startAddAttribute();
+  }
+
   startEditAttribute(attribute: UmlAttribute): void {
     if (this.isReadOnly()) return;
     this.editingAttributeId.set(attribute.id);

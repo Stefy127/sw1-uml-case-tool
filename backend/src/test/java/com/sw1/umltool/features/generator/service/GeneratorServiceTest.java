@@ -338,6 +338,50 @@ class GeneratorServiceTest {
                 assertTrue(associationEntity.contains("uniqueConstraints = @UniqueConstraint(columnNames = {\"alumno_id\", \"materia_id\"})"));
     }
 
+    @Test
+    void recursiveOptionalRelationUsesRoleNamesAcrossEntityDtosAndRuntimeSchema() throws Exception {
+        UmlClass empleado = UmlClass.builder().id("empleado").name("Empleado")
+                .attributes(List.of(UmlAttribute.builder().id("id").name("ID").type("Long").build(),
+                        UmlAttribute.builder().id("nombre").name("Nombre").type("String").build())).build();
+        UmlRelation relation = UmlRelation.builder().id("r1").sourceClassId("empleado").targetClassId("empleado")
+                .type(RelationType.ASSOCIATION).sourceMultiplicity(new Multiplicity("0", "1"))
+                .targetMultiplicity(new Multiplicity("0", "*")).sourceRole("jefe").targetRole("subordinados")
+                .build();
+        UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(empleado))
+                .relations(List.of(relation)).build();
+        byte[] zip = generate(mockSerializer(diagram), null);
+
+        String entity = entry(zip, "generated-backend/src/main/java/com/generated/app/entity/Empleado.java");
+        String request = entry(zip, "generated-backend/src/main/java/com/generated/app/dto/EmpleadoRequestDto.java");
+        String response = entry(zip, "generated-backend/src/main/java/com/generated/app/dto/EmpleadoResponseDto.java");
+        String runtime = entry(zip, "generated-backend/src/main/java/com/generated/app/controller/RuntimeSchemaController.java");
+        assertTrue(entity.contains("@ManyToOne(optional = true)\n    @JoinColumn(name=\"jefe_id\", nullable = true)\n    private Empleado jefe;"));
+        assertTrue(entity.contains("@OneToMany(mappedBy = \"jefe\")\n    @JsonIgnore\n    private List<Empleado> subordinados"));
+        assertTrue(request.contains("private Long jefeId;") && !request.contains("subordinadosIds"));
+        assertTrue(response.contains("private Long jefeId;") && response.contains("private List<Long> subordinadosIds"));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"jefeId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":false,\\\"editable\\\":true,\\\"readOnly\\\":false,\\\"nullable\\\":true")
+                && runtime.contains("\\\"name\\\":\\\"subordinadosIds\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":false,\\\"editable\\\":false,\\\"readOnly\\\":true,\\\"nullable\\\":true"));
+        assertFalse(containsEntry(zip, "generated-backend/src/main/java/com/generated/app/entity/EmpleadoEmpleado.java"));
+    }
+
+    @Test
+    void recursiveRequiredRelationUsesRoleNamesAndRequiredForeignKey() throws Exception {
+        UmlClass empleado = UmlClass.builder().id("empleado").name("Empleado").build();
+        UmlRelation relation = UmlRelation.builder().id("r1").sourceClassId("empleado").targetClassId("empleado")
+                .type(RelationType.ASSOCIATION).sourceMultiplicity(new Multiplicity("1", "1"))
+                .targetMultiplicity(new Multiplicity("0", "*")).sourceRole("padre").targetRole("hijos")
+                .build();
+        UmlDiagram diagram = UmlDiagram.builder().id("d1").name("Test").classes(List.of(empleado))
+                .relations(List.of(relation)).build();
+        byte[] zip = generate(mockSerializer(diagram), null);
+
+        String entity = entry(zip, "generated-backend/src/main/java/com/generated/app/entity/Empleado.java");
+        String runtime = entry(zip, "generated-backend/src/main/java/com/generated/app/controller/RuntimeSchemaController.java");
+        assertTrue(entity.contains("@ManyToOne(optional = false)\n    @JoinColumn(name=\"padre_id\", nullable = false)\n    private Empleado padre;"));
+        assertTrue(entity.contains("@OneToMany(mappedBy = \"padre\")\n    @JsonIgnore\n    private List<Empleado> hijos"));
+        assertTrue(runtime.contains("\\\"name\\\":\\\"padreId\\\",\\\"type\\\":\\\"relation\\\",\\\"required\\\":true,\\\"editable\\\":true,\\\"readOnly\\\":false,\\\"nullable\\\":false"));
+    }
+
         @ParameterizedTest
         @MethodSource("cardinalities")
         void relationForeignKeyNullabilityFollowsReferencedMultiplicity(String sourceLower, String targetLower, boolean expectedRequired) throws Exception {
@@ -526,4 +570,14 @@ class GeneratorServiceTest {
         fail("ZIP entry not found: " + expected);
         return "";
     }
+
+        private boolean containsEntry(byte[] zip, String expected) throws Exception {
+                String suffix = expected.substring(expected.indexOf('/') + 1);
+                try (ZipInputStream input = new ZipInputStream(new ByteArrayInputStream(zip), StandardCharsets.UTF_8)) {
+                        for (var entry = input.getNextEntry(); entry != null; entry = input.getNextEntry()) {
+                                if (entry.getName().equals(suffix) || entry.getName().endsWith("/" + suffix)) return true;
+                        }
+                }
+                return false;
+        }
 }

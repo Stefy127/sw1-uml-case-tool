@@ -139,6 +139,9 @@
 .state-message {
   padding: 32px 0;
 }
+.empty-projects { display: grid; justify-items: center; gap: 9px; padding: 38px 20px; border: 1px dashed #d9d1f4; border-radius: var(--radius-md); text-align: center; }
+.empty-projects .state-icon { display: grid; width: 45px; height: 45px; place-items: center; border-radius: 14px; color: var(--color-primary); background: var(--color-primary-soft); font-size: 24px; }
+.empty-projects p { color: var(--color-text-muted); font-size: 13px; }
 .error-message {
   color: var(--color-danger);
 }
