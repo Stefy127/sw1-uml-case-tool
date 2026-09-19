@@ -109,3 +109,9 @@ spring-temp/
 
 generated/
 exports/
+
+
+# n8n secrets
+n8n/.env
+n8n/credentials/
+n8n/backups/
