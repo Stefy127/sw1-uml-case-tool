@@ -16,7 +16,7 @@ El endpoint propio es `POST /api/ai/voice/interpret` con JSON:
 }
 ```
 
-El backend usa `N8N_VOICE_WEBHOOK_URL` y opcionalmente `N8N_VOICE_WEBHOOK_TOKEN`. En Docker Desktop para Windows, configura `N8N_VOICE_WEBHOOK_URL=http://host.docker.internal:5678/webhook/voice-interpret`; no uses `localhost`, porque dentro del contenedor apunta al propio backend. El token nunca llega a Angular ni se escribe en logs. Si la URL no está configurada, el proxy devuelve un error seguro.
+El backend usa `N8N_VOICE_WEBHOOK_URL` y opcionalmente `N8N_VOICE_WEBHOOK_TOKEN`. El Compose principal ejecuta n8n en la misma red Docker, por lo que la URL es `http://n8n:5678/webhook/voice-interpret`; no uses `localhost`, porque dentro del contenedor apunta al propio backend. El token nunca llega a Angular ni se escribe en logs. Si la URL no está configurada, el proxy devuelve un error seguro.
 
 ## Contrato n8n
 
