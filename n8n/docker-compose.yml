@@ -8,6 +8,7 @@ services:
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
       - TZ=${TZ}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     volumes:
       - n8n_data:/home/node/.n8n
     restart: unless-stopped

@@ -5,7 +5,7 @@ La aplicación envía la imagen desde Spring Boot a un workflow n8n independient
 ## Configuración
 
 ```env
-N8N_UML_IMAGE_WEBHOOK_URL=http://host.docker.internal:5678/webhook/uml-image-interpret
+N8N_UML_IMAGE_WEBHOOK_URL=http://n8n:5678/webhook/uml-image-interpret
 N8N_UML_IMAGE_WEBHOOK_TOKEN=
 ```
 

@@ -8,9 +8,25 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.37.10
+    container_name: umltool-n8n
+    restart: unless-stopped
+    environment:
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-America/Bogota}
+      TZ: ${TZ:-America/Bogota}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
 
   backend:
     build:
@@ -18,6 +34,7 @@ services:
     container_name: umltool-backend
     depends_on:
       - postgres
+      - n8n
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
@@ -45,3 +62,4 @@ services:
 
 volumes:
   postgres_data:
+  n8n_data:
