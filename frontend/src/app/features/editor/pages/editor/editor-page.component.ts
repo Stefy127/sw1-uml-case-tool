@@ -22,6 +22,7 @@ import {
   AssociationClassLink,
 } from '../../models/diagram.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
+import { normalizeClassName } from '../../utils/class-name.util';
 import { CollaborationService } from '../../services/collaboration.service';
 import { DiagramService } from '../../services/diagram.service';
 import { XmiImportService } from '../../services/xmi-import.service';
@@ -673,8 +674,8 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   private findCurrentClass(name: string | undefined, current: DiagramDetail): UmlClass | undefined {
-    const normalized = name?.trim().replace(/^(?:el|la|los|las)\s+/i, '').toLocaleLowerCase();
-    return current.canonicalModel.classes.find((item) => item.name.trim().toLocaleLowerCase() === normalized);
+    const normalized = normalizeClassName(name?.replace(/^(?:el|la|los|las)\s+/i, ''));
+    return current.canonicalModel.classes.find((item) => normalizeClassName(item.name) === normalized);
   }
 
   private voiceSummary(command: NonNullable<VoiceCommandPreview['command']>): string {
@@ -2387,10 +2388,10 @@ export class EditorPageComponent implements OnDestroy {
 
   private nextClassName(diagram: DiagramDetail): string {
     const names = new Set(
-      diagram.canonicalModel.classes.map((umlClass) => umlClass.name.toLowerCase()),
+      diagram.canonicalModel.classes.map((umlClass) => normalizeClassName(umlClass.name)),
     );
     let index = 1;
-    while (names.has(`clase${index}`.toLowerCase())) index++;
+    while (names.has(normalizeClassName(`Clase${index}`))) index++;
     return `Clase${index}`;
   }
 
@@ -2429,7 +2430,7 @@ export class EditorPageComponent implements OnDestroy {
       return;
     }
     const duplicate = currentDiagram.canonicalModel.classes.some(
-      (umlClass) => umlClass.id !== classId && umlClass.name.toLowerCase() === name.toLowerCase(),
+      (umlClass) => umlClass.id !== classId && normalizeClassName(umlClass.name) === normalizeClassName(name),
     );
     if (duplicate) {
       this.renameError.set('Ya existe una clase con ese nombre.');
@@ -2586,9 +2587,9 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   private nextAssociationClassName(diagram: DiagramDetail): string {
-    const names = new Set(diagram.canonicalModel.classes.map((umlClass) => umlClass.name.toLowerCase()));
+    const names = new Set(diagram.canonicalModel.classes.map((umlClass) => normalizeClassName(umlClass.name)));
     let index = 1;
-    while (names.has(`claseasociacion${index}`)) index++;
+    while (names.has(normalizeClassName(`ClaseAsociacion${index}`))) index++;
     return `ClaseAsociacion${index}`;
   }
 

@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { VoiceCommand, VoiceCommandResult } from '../models/voice-command.model';
+import { normalizeClassName } from '../utils/class-name.util';
 
 @Injectable({ providedIn: 'root' })
 export class VoiceCommandParserService {
@@ -47,7 +48,7 @@ export class VoiceCommandParserService {
   }
 
   private normalize(text: string): string {
-    return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[.,!?;:]/g, ' ').replace(/\s+/g, ' ').trim();
+    return normalizeClassName(text).replace(/[.,!?;:]/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
   private restoreName(value: string, original: string, pattern: RegExp): string {

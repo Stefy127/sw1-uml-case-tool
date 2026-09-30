@@ -6,6 +6,8 @@ import { NEVER, of, throwError } from 'rxjs';
 import { DiagramDetail, UmlAttribute, UmlMethod, UmlParameter, UmlRelation } from '../../models/diagram.model';
 import { ExecuteDiagramOperationRequest } from '../../models/diagram-operation.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
+import { AiVoiceCommandService } from '../../services/ai-voice-command.service';
+import { normalizeClassName } from '../../utils/class-name.util';
 import { DiagramService } from '../../services/diagram.service';
 import { XmiImportService } from '../../services/xmi-import.service';
 import { ImageImportService } from '../../services/image-import.service';
@@ -23,7 +25,7 @@ const detail: DiagramDetail = {
   viewState: { diagramId: 'd1', nodes: [], relations: [] },
 };
 
-function configure(operationService: object, current = detail, xmiImport: object = {}, imageImport: object = {}, projectApi: object = { getMyRole: () => of({ role: 'OWNER' }), getMembers: () => of([]) }): Promise<void> {
+function configure(operationService: object, current = detail, xmiImport: object = {}, imageImport: object = {}, projectApi: object = { getMyRole: () => of({ role: 'OWNER' }), getMembers: () => of([]) }, aiVoice: object = { interpret: () => NEVER }): Promise<void> {
   return TestBed.configureTestingModule({
     imports: [EditorPageComponent],
     providers: [
@@ -31,6 +33,7 @@ function configure(operationService: object, current = detail, xmiImport: object
       { provide: DiagramOperationService, useValue: operationService },
       { provide: XmiImportService, useValue: { preview: () => NEVER, apply: () => NEVER, ...xmiImport } },
       { provide: ImageImportService, useValue: { preview: () => NEVER, apply: () => NEVER, ...imageImport } },
+      { provide: AiVoiceCommandService, useValue: aiVoice },
       { provide: ProjectService, useValue: projectApi },
       provideRouter([]),
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'd1' } } } },
@@ -39,6 +42,62 @@ function configure(operationService: object, current = detail, xmiImport: object
 }
 
 describe('EditorPageComponent', () => {
+  it('normalizes class names for case, accents and surrounding whitespace', () => {
+    expect(normalizeClassName('Cliente')).toBe(normalizeClassName('cliente'));
+    expect(normalizeClassName('Cliente')).toBe(normalizeClassName('CLIENTE'));
+    expect(normalizeClassName('Cliente')).toBe(normalizeClassName('Clíente'));
+    expect(normalizeClassName('Cliente')).toBe(normalizeClassName(' cliente '));
+  });
+
+  it.each(['Cliente', 'cliente', 'CLIENTE', 'Clíente', '  cliente  '])('applies a local command to the stored class for input %s', async (className) => {
+    const current = diagramWithClass();
+    let executed = false;
+    await configure({
+      execute: () => { executed = true; return of({ newVersion: 8, canonicalModel: current.canonicalModel, viewState: current.viewState }); },
+    }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.voiceText.set(`elimina la clase ${className}`);
+    page.interpretVoiceCommand();
+    page.applyVoiceCommand();
+
+    expect(executed).toBe(true);
+    expect(page.voiceError()).toBe('');
+  });
+
+  it('applies an AI relation using normalized source and target class names', async () => {
+    const current: DiagramDetail = {
+      ...diagramWithClass(),
+      canonicalModel: {
+        ...diagramWithClass().canonicalModel,
+        classes: [
+          { id: 'c1', name: 'Cliente', isAbstract: false, attributes: [], methods: [] },
+          { id: 'p1', name: 'Pedido', isAbstract: false, attributes: [], methods: [] },
+        ],
+      },
+    };
+    let executed = false;
+    await configure({
+      execute: () => { executed = true; return of({ newVersion: 8, canonicalModel: current.canonicalModel, viewState: current.viewState }); },
+    }, current, {}, {}, undefined, {
+      interpret: () => of({
+        success: true,
+        command: { type: 'CREATE_RELATION', relationType: 'ASSOCIATION', className: 'Clíente', secondaryClassName: ' pedido ' },
+        confidence: 0.95,
+        summary: 'Cliente asociado a Pedido',
+        errors: [],
+      }),
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.voiceText.set('relaciona cliente con pedido');
+    page.interpretVoiceWithAi();
+    expect(page.voicePreview()?.command).not.toBeNull();
+    page.applyVoiceCommand();
+
+    expect(executed).toBe(true);
+    expect(page.voiceError()).toBe('');
+  });
   it('accepts XMI and image files and rejects unsupported formats', async () => {
     await configure({ execute: () => NEVER });
     const page = TestBed.createComponent(EditorPageComponent).componentInstance;

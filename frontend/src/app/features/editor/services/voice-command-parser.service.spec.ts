@@ -26,6 +26,22 @@ describe('VoiceCommandParserService', () => {
     expect(result.command?.className).toBe('MiCliente');
   });
 
+  it.each(['Cliente', 'cliente', 'CLIENTE', 'Clíente', '  cliente  '])(
+    'accepts a class command with the name variant %s',
+    (className) => {
+      const result = parser.parse(`elimina la clase ${className}`);
+      expect(result.success).toBe(true);
+      expect(result.command?.className).toBe('cliente');
+    },
+  );
+
+  it('extracts both normalized class names in a relation command', () => {
+    const result = parser.parse('crear asociación entre Clíente y Pedído');
+    expect(result.success).toBe(true);
+    expect(result.command?.className).toBe('cliente');
+    expect(result.command?.secondaryClassName).toBe('pedido');
+  });
+
   it('understands natural association wording and removes only spoken articles', () => {
     const result = parser.parse('Haz que el Cliente se asocie con Agua');
     expect(result.success).toBe(true);
