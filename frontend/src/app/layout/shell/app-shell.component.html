@@ -1,8 +1,9 @@
 <div class="shell" [class.collapsed]="collapsed">
+  @if (collapsed) { <button class="sidebar-overlay" type="button" aria-label="Cerrar menú" (click)="closeMobileMenu()"></button> }
   <aside class="sidebar">
     <div class="brand">
       <span class="brand-mark">S</span><span class="brand-name"><strong>SW1</strong> UML</span
-      ><button class="collapse" (click)="collapsed = !collapsed">☰</button>
+      ><button class="collapse" type="button" aria-label="Colapsar navegación" (click)="collapsed = !collapsed">☰</button>
     </div>
     <div class="nav-group">
       <span class="nav-title">Workspace</span>
@@ -10,6 +11,7 @@
         <a
           class="nav-item"
           [routerLink]="item.link"
+          (click)="closeMobileMenu()"
           routerLinkActive="active"
           [routerLinkActiveOptions]="{ exact: item.label === 'Dashboard' }"
           ><span class="nav-icon">{{ item.icon }}</span
@@ -22,25 +24,25 @@
     </div>
     <div class="nav-group tools">
       <span class="nav-title">Herramientas</span
-      ><a class="nav-item" routerLink="/projects"
+      ><a class="nav-item" routerLink="/projects" (click)="closeMobileMenu()"
         ><span class="nav-icon">⊞</span><span>Importar diagrama</span></a
-      ><a class="nav-item" routerLink="/editor/demo"
+      ><a class="nav-item" routerLink="/editor/demo" (click)="closeMobileMenu()"
         ><span class="nav-icon">&lt;/&gt;</span><span>Generar backend</span></a
-      ><a class="nav-item" routerLink="/appearance"
+      ><a class="nav-item" routerLink="/appearance" (click)="closeMobileMenu()"
         ><span class="nav-icon">◌</span><span>Apariencia</span></a
       >
     </div>
     <div class="sidebar-foot">
-      <a class="nav-item" routerLink="/help"
+      <a class="nav-item" routerLink="/help" (click)="closeMobileMenu()"
         ><span class="nav-icon">?</span><span>Ayuda y recursos</span></a
-      ><a class="nav-item" routerLink="/account"
+      ><a class="nav-item" routerLink="/account" (click)="closeMobileMenu()"
         ><span class="nav-icon">⚙</span><span>Configuración</span></a
       >
     </div>
   </aside>
   <main class="main">
     <header class="topbar">
-      <button class="mobile-menu" (click)="collapsed = !collapsed">☰</button>
+      <button class="mobile-menu" type="button" aria-label="Abrir navegación" [attr.aria-expanded]="collapsed" (click)="collapsed = !collapsed">☰</button>
       <div class="top-search">⌕ <span>Buscar proyectos...</span></div>
       <div class="top-actions">
         @if (auth.authLoading()) { <span class="auth-loading">Cargando...</span> } @else if (auth.currentUser(); as user) { <button class="account-trigger" (click)="toggleUserMenu()" aria-label="Abrir menú de cuenta"><span class="avatar rose">{{ initials }}</span><span class="user-name">{{ user.firstName }}</span><span class="chevron">⌄</span></button>@if (userMenuOpen) { <div class="account-menu"><strong>{{ user.firstName }} {{ user.lastName }}</strong><small>{{ user.email }}</small><a routerLink="/projects"><span aria-hidden="true">▱</span> Mis proyectos</a><a routerLink="/account"><span aria-hidden="true">⚙</span> Configuración de cuenta</a><a routerLink="/appearance"><span aria-hidden="true">◌</span> Apariencia</a><button class="logout-item" (click)="auth.logout()"><span aria-hidden="true">↪</span> Cerrar sesión</button></div> } } @else { <a class="auth-link" routerLink="/login">Iniciar sesión</a><a class="auth-register" routerLink="/register">Regístrate</a> }

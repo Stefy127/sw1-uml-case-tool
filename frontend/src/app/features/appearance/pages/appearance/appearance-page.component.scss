@@ -208,12 +208,20 @@
     grid-template-columns: repeat(2, 1fr);
   }
   .preview aside {
-    width: 125px;
+    width: 100%;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
   }
+  .preview { flex-direction: column; }
   .preview-main {
+    min-height: 250px;
     padding: 20px 15px;
   }
+  .preview-card { width: min(100%, 250px); margin-top: 24px; }
   .preview-class {
-    right: 5%;
+    position: relative;
+    right: auto;
+    bottom: auto;
+    margin: 18px 0 0 auto;
   }
 }

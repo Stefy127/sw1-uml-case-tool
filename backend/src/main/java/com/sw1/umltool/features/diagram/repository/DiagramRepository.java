@@ -9,6 +9,7 @@ import java.util.Optional;
 public interface DiagramRepository extends JpaRepository<DiagramEntity, String> {
 
     List<DiagramEntity> findByProjectId(String projectId);
+    void deleteByProjectId(String projectId);
 
     Optional<DiagramEntity> findByIdAndProjectId(String id, String projectId);
 }

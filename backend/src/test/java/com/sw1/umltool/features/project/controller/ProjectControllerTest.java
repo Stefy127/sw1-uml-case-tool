@@ -3,11 +3,13 @@ package com.sw1.umltool.features.project.controller;
 import com.sw1.umltool.common.exception.GlobalExceptionHandler;
 import com.sw1.umltool.features.project.model.ProjectEntity;
 import com.sw1.umltool.features.project.service.ProjectService;
+import com.sw1.umltool.features.project.dto.UpdateProjectRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 
 import java.util.List;
 import java.util.Optional;
@@ -17,6 +19,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -74,6 +78,23 @@ class ProjectControllerTest {
         mockMvc.perform(get("/api/projects").param("ownerUserId", "user-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].ownerUserId").value("user-1"));
+    }
+
+    @Test
+    void patchProjectReturnsUpdatedProject() throws Exception {
+        when(projectService.updateProject(any(), any(), any(UpdateProjectRequest.class))).thenReturn(project());
+
+        mockMvc.perform(patch("/api/projects/project-1").principal(new UsernamePasswordAuthenticationToken("owner-1", null))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Updated\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value("project-1"));
+    }
+
+    @Test
+    void deleteProjectReturnsNoContent() throws Exception {
+        mockMvc.perform(delete("/api/projects/project-1").principal(new UsernamePasswordAuthenticationToken("owner-1", null)))
+                .andExpect(status().isNoContent());
     }
 
     private ProjectEntity project() {

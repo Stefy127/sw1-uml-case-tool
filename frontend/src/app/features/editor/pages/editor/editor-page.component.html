@@ -933,7 +933,7 @@
         }
         @if (voicePreview(); as preview) {
           @if (preview.errors.length > 0) { <p class="error-message">{{ preview.errors.join(' ') }}<br />Ejemplos: Crear clase Cliente · Agregar atributo email String a Cliente · Crear asociación entre Cliente y Pedido</p> }
-          @else { <div class="voice-preview"><b>Interpretación</b>@if (preview.source === 'AI') { <small class="voice-ai-badge">Interpretado con IA</small> }<p>{{ preview.summary }}</p><button class="btn btn-primary" type="button" [disabled]="voiceState() === 'applying'" (click)="applyVoiceCommand()">{{ voiceState() === 'applying' ? 'Aplicando...' : 'Aplicar' }}</button></div> }
+          @else { <div class="voice-preview"><b>Interpretación</b>@if (preview.source === 'AI') { <small class="voice-ai-badge">Interpretado con IA</small> }<p>{{ preview.summary }}</p>@if (!preview.readOnly) { <button class="btn btn-primary" type="button" [disabled]="voiceState() === 'applying'" (click)="applyVoiceCommand()">{{ voiceState() === 'applying' ? 'Aplicando...' : 'Aplicar' }}</button> } </div> }
         }
         @if (voiceError() && !voicePreview()?.errors?.length) { <p class="error-message">{{ voiceError() }}</p> }
         <button class="btn btn-ghost voice-cancel-button" type="button" [disabled]="voiceState() === 'applying'" (click)="closeVoiceDialog()">Cancelar</button>

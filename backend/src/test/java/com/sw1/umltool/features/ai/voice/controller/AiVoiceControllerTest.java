@@ -31,7 +31,7 @@ class AiVoiceControllerTest {
     @Test
     void acceptsTextAndReturnsValidatedCommandShape() throws Exception {
         when(service.interpret(any())).thenReturn(new AiVoiceInterpretResponse(true,
-                new AiVoiceInterpretResponse.AiCommand("CREATE_RELATION", null, null, "Empleado", "Persona", null, null, null, null, "INHERITANCE"),
+                new AiVoiceInterpretResponse.AiCommand("CREATE_RELATION", null, null, "Empleado", "Persona", null, null, null, null, null, null, null, "INHERITANCE"),
                 0.94, "Empleado hereda de Persona", java.util.List.of()));
 
         mockMvc.perform(post("/api/ai/voice/interpret").contentType(MediaType.APPLICATION_JSON)

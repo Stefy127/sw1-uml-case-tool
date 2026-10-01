@@ -12,11 +12,19 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import com.sw1.umltool.features.project.exception.ProjectForbiddenException;
+import com.sw1.umltool.features.project.exception.ProjectNotFoundException;
 
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ProjectNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleProjectNotFound(ProjectNotFoundException exception) { return error(HttpStatus.NOT_FOUND, "PROJECT_NOT_FOUND", exception.getMessage()); }
+
+    @ExceptionHandler(ProjectForbiddenException.class)
+    public ResponseEntity<ApiErrorResponse> handleProjectForbidden(ProjectForbiddenException exception) { return error(HttpStatus.FORBIDDEN, "PROJECT_FORBIDDEN", exception.getMessage()); }
 
     @ExceptionHandler(DiagramNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleDiagramNotFound(DiagramNotFoundException exception) {

@@ -21,6 +21,9 @@ import com.sw1.umltool.features.project.dto.ProjectRoleResponse;
 import com.sw1.umltool.features.project.dto.ShareLinkRequest;
 import com.sw1.umltool.features.project.dto.ShareLinkResponse;
 import com.sw1.umltool.features.project.dto.SharedProjectResponse;
+import com.sw1.umltool.features.project.dto.UpdateProjectRequest;
+import com.sw1.umltool.features.project.exception.ProjectNotFoundException;
+import com.sw1.umltool.features.diagram.repository.DiagramRepository;
 import com.sw1.umltool.features.project.model.ProjectShareMode;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,16 +35,43 @@ public class ProjectService {
     private final ProjectMemberRepository projectMemberRepository;
     private final UserRepository userRepository;
     private final ProjectAccessService access;
+    private final DiagramRepository diagramRepository;
 
     public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository projectMemberRepository) {
         this.projectRepository = projectRepository;
         this.projectMemberRepository = projectMemberRepository;
         this.userRepository = null;
         this.access = null;
+        this.diagramRepository = null;
     }
 
     @Autowired
-    public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository members, UserRepository users, ProjectAccessService access) { this.projectRepository=projectRepository; this.projectMemberRepository=members; this.userRepository=users; this.access=access; }
+    public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository members, UserRepository users, ProjectAccessService access, DiagramRepository diagramRepository) { this.projectRepository=projectRepository; this.projectMemberRepository=members; this.userRepository=users; this.access=access; this.diagramRepository=diagramRepository; }
+
+    @Transactional
+    public ProjectEntity updateProject(String projectId, String userId, UpdateProjectRequest request) {
+        ProjectEntity project = projectRepository.findById(projectId).orElseThrow(() -> new ProjectNotFoundException(projectId));
+        access.requireOwner(projectId, userId);
+        if (request == null || (!request.isNameProvided() && !request.isDescriptionProvided())) throw new IllegalArgumentException("Debe enviarse al menos un campo para actualizar.");
+        if (request.isNameProvided()) {
+            String name = request.getName() == null ? "" : request.getName().trim();
+            if (name.isBlank()) throw new IllegalArgumentException("El nombre del proyecto es obligatorio.");
+            if (name.length() > 150) throw new IllegalArgumentException("El nombre del proyecto no puede superar 150 caracteres.");
+            project.setName(name);
+        }
+        if (request.isDescriptionProvided()) project.setDescription(request.getDescription());
+        project.setUpdatedAt(LocalDateTime.now());
+        return projectRepository.save(project);
+    }
+
+    @Transactional
+    public void deleteProject(String projectId, String userId) {
+        if (!projectRepository.existsById(projectId)) throw new ProjectNotFoundException(projectId);
+        access.requireOwner(projectId, userId);
+        diagramRepository.deleteByProjectId(projectId);
+        projectMemberRepository.deleteByProjectId(projectId);
+        projectRepository.deleteById(projectId);
+    }
 
     @Transactional
     public ProjectEntity createProject(String name, String description, String ownerUserId) {

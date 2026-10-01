@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +21,7 @@ import org.springframework.security.core.Authentication;
 import com.sw1.umltool.features.project.dto.AddProjectMemberRequest;
 import com.sw1.umltool.features.project.dto.ProjectMemberResponse;
 import com.sw1.umltool.features.project.dto.ProjectRoleResponse;
+import com.sw1.umltool.features.project.dto.UpdateProjectRequest;
 import com.sw1.umltool.features.project.model.ProjectMemberRole;
 import com.sw1.umltool.features.project.dto.ShareLinkRequest;
 import com.sw1.umltool.features.project.dto.ShareLinkResponse;
@@ -58,6 +60,17 @@ public class ProjectController {
         return projectResult
                 .map(currentProject -> ResponseEntity.ok(ProjectMapper.toResponse(currentProject)))
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PatchMapping("/{projectId}")
+    public ProjectResponse update(@PathVariable String projectId, Authentication auth, @RequestBody UpdateProjectRequest request) {
+        return ProjectMapper.toResponse(projectService.updateProject(projectId, auth.getName(), request));
+    }
+
+    @DeleteMapping("/{projectId}")
+    public ResponseEntity<Void> delete(@PathVariable String projectId, Authentication auth) {
+        projectService.deleteProject(projectId, auth.getName());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/shared") public List<ProjectResponse> shared(Authentication auth) { return projectService.shared(auth.getName()).stream().map(ProjectMapper::toResponse).toList(); }

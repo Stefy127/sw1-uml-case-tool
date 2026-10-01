@@ -21,7 +21,7 @@ import java.util.Set;
 @Service
 public class AiVoiceInterpretationService {
     private static final Logger log = LoggerFactory.getLogger(AiVoiceInterpretationService.class);
-    private static final Set<String> COMMANDS = Set.of("CREATE_CLASS", "DELETE_CLASS", "RENAME_CLASS", "ADD_ATTRIBUTE", "REMOVE_ATTRIBUTE", "ADD_METHOD", "CREATE_RELATION");
+    private static final Set<String> COMMANDS = Set.of("CREATE_CLASS", "DELETE_CLASS", "RENAME_CLASS", "LIST_CLASSES", "ADD_ATTRIBUTE", "RENAME_ATTRIBUTE", "CHANGE_ATTRIBUTE_TYPE", "REMOVE_ATTRIBUTE", "READ_CLASS_ATTRIBUTES", "ADD_METHOD", "RENAME_METHOD", "REMOVE_METHOD", "READ_CLASS_METHODS", "CREATE_RELATION", "REMOVE_RELATION", "CHANGE_RELATION_TYPE", "READ_CLASS_RELATIONS");
     private static final Set<String> RELATION_TYPES = Set.of("ASSOCIATION", "AGGREGATION", "COMPOSITION", "INHERITANCE", "DEPENDENCY");
     private final RestClient client;
     private final String webhookUrl;
@@ -61,7 +61,7 @@ public class AiVoiceInterpretationService {
                     && response.command().secondaryClassName() == null
                     && response.command().targetClassName() != null) {
                 var c = response.command();
-                normalizedResponse = new AiVoiceInterpretResponse(true, new AiVoiceInterpretResponse.AiCommand(c.type(), c.className() == null ? c.sourceClassName() : c.className(), c.targetClassName(), c.sourceClassName(), c.targetClassName(), c.newClassName(), c.attributeName(), c.attributeType(), c.methodName(), c.relationType()), response.confidence(), response.summary(), response.errors());
+                normalizedResponse = new AiVoiceInterpretResponse(true, new AiVoiceInterpretResponse.AiCommand(c.type(), c.className() == null ? c.sourceClassName() : c.className(), c.targetClassName(), c.sourceClassName(), c.targetClassName(), c.newClassName(), c.attributeName(), c.newAttributeName(), c.attributeType(), c.methodName(), c.newMethodName(), c.returnType(), c.relationType()), response.confidence(), response.summary(), response.errors());
             } else {
                 normalizedResponse = response;
             }
@@ -109,11 +109,14 @@ public class AiVoiceInterpretationService {
         if (!response.success()) return;
         var command = response.command();
         if (command == null || !COMMANDS.contains(command.type())) throw invalidResponse();
-        if (Set.of("CREATE_CLASS", "DELETE_CLASS", "RENAME_CLASS", "ADD_ATTRIBUTE", "REMOVE_ATTRIBUTE", "ADD_METHOD").contains(command.type()) && blank(command.className())) throw invalidResponse();
-        if (command.type().equals("ADD_ATTRIBUTE") && (blank(command.attributeName()) || blank(command.attributeType()))) throw invalidResponse();
-        if (command.type().equals("ADD_METHOD") && blank(command.methodName())) throw invalidResponse();
-        if (command.type().equals("CREATE_RELATION") && !RELATION_TYPES.contains(command.relationType())) throw invalidResponse();
-        if (command.type().equals("CREATE_RELATION") && (blank(command.className()) && blank(command.sourceClassName()) || blank(command.secondaryClassName()) && blank(command.targetClassName()))) throw invalidResponse();
+        if (Set.of("DELETE_CLASS", "RENAME_CLASS", "ADD_ATTRIBUTE", "RENAME_ATTRIBUTE", "CHANGE_ATTRIBUTE_TYPE", "REMOVE_ATTRIBUTE", "READ_CLASS_ATTRIBUTES", "ADD_METHOD", "RENAME_METHOD", "REMOVE_METHOD", "READ_CLASS_METHODS", "READ_CLASS_RELATIONS").contains(command.type()) && blank(command.className())) throw invalidResponse();
+        if (Set.of("ADD_ATTRIBUTE", "RENAME_ATTRIBUTE", "CHANGE_ATTRIBUTE_TYPE").contains(command.type()) && blank(command.attributeName())) throw invalidResponse();
+        if (command.type().equals("ADD_ATTRIBUTE") && blank(command.attributeType())) throw invalidResponse();
+        if (command.type().equals("RENAME_ATTRIBUTE") && blank(command.newAttributeName())) throw invalidResponse();
+        if (Set.of("ADD_METHOD", "RENAME_METHOD", "REMOVE_METHOD").contains(command.type()) && blank(command.methodName())) throw invalidResponse();
+        if (command.type().equals("RENAME_METHOD") && blank(command.newMethodName())) throw invalidResponse();
+        if (Set.of("CREATE_RELATION", "REMOVE_RELATION", "CHANGE_RELATION_TYPE").contains(command.type()) && !RELATION_TYPES.contains(command.relationType()) && !command.type().equals("REMOVE_RELATION")) throw invalidResponse();
+        if (Set.of("CREATE_RELATION", "REMOVE_RELATION", "CHANGE_RELATION_TYPE").contains(command.type()) && (blank(command.className()) && blank(command.sourceClassName() ) || blank(command.secondaryClassName()) && blank(command.targetClassName()))) throw invalidResponse();
     }
 
     private IllegalArgumentException invalidResponse() {

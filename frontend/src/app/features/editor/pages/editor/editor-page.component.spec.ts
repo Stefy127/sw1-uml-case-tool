@@ -6,6 +6,8 @@ import { NEVER, of, throwError } from 'rxjs';
 import { DiagramDetail, UmlAttribute, UmlMethod, UmlParameter, UmlRelation } from '../../models/diagram.model';
 import { ExecuteDiagramOperationRequest } from '../../models/diagram-operation.model';
 import { DiagramOperationService } from '../../services/diagram-operation.service';
+import { AiVoiceCommandService } from '../../services/ai-voice-command.service';
+import { normalizeClassName } from '../../utils/class-name.util';
 import { DiagramService } from '../../services/diagram.service';
 import { XmiImportService } from '../../services/xmi-import.service';
 import { ImageImportService } from '../../services/image-import.service';
@@ -23,7 +25,7 @@ const detail: DiagramDetail = {
   viewState: { diagramId: 'd1', nodes: [], relations: [] },
 };
 
-function configure(operationService: object, current = detail, xmiImport: object = {}, imageImport: object = {}, projectApi: object = { getMyRole: () => of({ role: 'OWNER' }), getMembers: () => of([]) }): Promise<void> {
+function configure(operationService: object, current = detail, xmiImport: object = {}, imageImport: object = {}, projectApi: object = { getMyRole: () => of({ role: 'OWNER' }), getMembers: () => of([]) }, aiVoice: object = { interpret: () => NEVER }): Promise<void> {
   return TestBed.configureTestingModule({
     imports: [EditorPageComponent],
     providers: [
@@ -31,6 +33,7 @@ function configure(operationService: object, current = detail, xmiImport: object
       { provide: DiagramOperationService, useValue: operationService },
       { provide: XmiImportService, useValue: { preview: () => NEVER, apply: () => NEVER, ...xmiImport } },
       { provide: ImageImportService, useValue: { preview: () => NEVER, apply: () => NEVER, ...imageImport } },
+      { provide: AiVoiceCommandService, useValue: aiVoice },
       { provide: ProjectService, useValue: projectApi },
       provideRouter([]),
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'd1' } } } },
@@ -39,6 +42,174 @@ function configure(operationService: object, current = detail, xmiImport: object
 }
 
 describe('EditorPageComponent', () => {
+  it.each([
+    [{ lower: '1', upper: '1' }, '1..1'],
+    [{ lower: '0', upper: '1' }, '0..1'],
+    [{ lower: '0', upper: '*' }, '0..*'],
+    [{ lower: '1', upper: '*' }, '1..*'],
+  ])('formats multiplicity %j as %s', async (multiplicity, expected) => {
+    await configure({ execute: () => NEVER });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    expect(page.multiplicityLabel(multiplicity)).toBe(expected);
+    expect(page.multiplicityValue(multiplicity)).toBe(expected);
+  });
+
+  it('normalizes class names for case, accents and surrounding whitespace', () => {
+    expect(normalizeClassName('Cliente')).toBe(normalizeClassName('cliente'));
+    expect(normalizeClassName('Cliente')).toBe(normalizeClassName('CLIENTE'));
+    expect(normalizeClassName('Cliente')).toBe(normalizeClassName('Clíente'));
+    expect(normalizeClassName('Cliente')).toBe(normalizeClassName(' cliente '));
+  });
+
+  it.each(['Cliente', 'cliente', 'CLIENTE', 'Clíente', '  cliente  '])('applies a local command to the stored class for input %s', async (className) => {
+    const current = diagramWithClass();
+    let executed = false;
+    await configure({
+      execute: () => { executed = true; return of({ newVersion: 8, canonicalModel: current.canonicalModel, viewState: current.viewState }); },
+    }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.voiceText.set(`elimina la clase ${className}`);
+    page.interpretVoiceCommand();
+    page.applyVoiceCommand();
+
+    expect(executed).toBe(true);
+    expect(page.voiceError()).toBe('');
+  });
+
+  it('applies an AI relation using normalized source and target class names', async () => {
+    const current: DiagramDetail = {
+      ...diagramWithClass(),
+      canonicalModel: {
+        ...diagramWithClass().canonicalModel,
+        classes: [
+          { id: 'c1', name: 'Cliente', isAbstract: false, attributes: [], methods: [] },
+          { id: 'p1', name: 'Pedido', isAbstract: false, attributes: [], methods: [] },
+        ],
+      },
+    };
+    let executed = false;
+    await configure({
+      execute: () => { executed = true; return of({ newVersion: 8, canonicalModel: current.canonicalModel, viewState: current.viewState }); },
+    }, current, {}, {}, undefined, {
+      interpret: () => of({
+        success: true,
+        command: { type: 'CREATE_RELATION', relationType: 'ASSOCIATION', className: 'Clíente', secondaryClassName: ' pedido ' },
+        confidence: 0.95,
+        summary: 'Cliente asociado a Pedido',
+        errors: [],
+      }),
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.voiceText.set('relaciona cliente con pedido');
+    page.interpretVoiceWithAi();
+    expect(page.voicePreview()?.command).not.toBeNull();
+    page.applyVoiceCommand();
+
+    expect(executed).toBe(true);
+    expect(page.voiceError()).toBe('');
+  });
+
+  it.each([
+    ['Cliente', 'Pedido'],
+    ['cliente', 'pedido'],
+    ['Clíente', 'Pedído'],
+  ])('changes an existing association to composition for %s/%s', async (className, secondaryClassName) => {
+    const current = diagramWithTwoClassesAndRelation();
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure({
+      execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
+        request = value;
+        return of({ newVersion: 8, canonicalModel: { ...current.canonicalModel, relations: [{ ...current.canonicalModel.relations[0], type: 'COMPOSITION' }] }, viewState: current.viewState });
+      },
+    }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.voicePreview.set({
+      originalText: 'cambia la relación',
+      commandType: 'CHANGE_RELATION_TYPE',
+      summary: 'Cambiar relación',
+      command: { type: 'CHANGE_RELATION_TYPE', className, secondaryClassName, relationType: 'COMPOSITION' },
+      errors: [],
+    });
+    page.voiceState.set('ready');
+    page.applyVoiceCommand();
+
+    expect(request?.operation.type).toBe('CHANGE_RELATION_TYPE');
+    expect(request?.operation.payload).toEqual({ relationId: 'r1', type: 'COMPOSITION' });
+    expect(page.voiceError()).toBe('');
+  });
+
+  it('changes an association using reversed endpoints when the pair is unambiguous', async () => {
+    const current = diagramWithTwoClassesAndRelation();
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure({
+      execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
+        request = value;
+        return of({ newVersion: 8, canonicalModel: current.canonicalModel, viewState: current.viewState });
+      },
+    }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.voicePreview.set({
+      originalText: 'cambia la relación', commandType: 'CHANGE_RELATION_TYPE', summary: 'Cambiar relación',
+      command: { type: 'CHANGE_RELATION_TYPE', className: 'Pedido', secondaryClassName: 'Cliente', relationType: 'AGGREGATION' }, errors: [],
+    });
+    page.voiceState.set('ready');
+    page.applyVoiceCommand();
+
+    expect(request?.operation.payload).toEqual({ relationId: 'r1', type: 'AGGREGATION' });
+  });
+
+  it('accepts sourceClassName and targetClassName as compatibility fields', async () => {
+    const current = diagramWithTwoClassesAndRelation();
+    let executed = false;
+    await configure({
+      execute: () => { executed = true; return of({ newVersion: 8, canonicalModel: current.canonicalModel, viewState: current.viewState }); },
+    }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.voicePreview.set({
+      originalText: 'cambia la relación', commandType: 'CHANGE_RELATION_TYPE', summary: 'Cambiar relación',
+      command: { type: 'CHANGE_RELATION_TYPE', sourceClassName: 'cliente', targetClassName: 'pedido', relationType: 'COMPOSITION' }, errors: [],
+    });
+    page.voiceState.set('ready');
+    page.applyVoiceCommand();
+
+    expect(executed).toBe(true);
+  });
+
+  it('keeps the relation-not-found error when no pair exists', async () => {
+    const current = diagramWithTwoClassesAndRelation();
+    current.canonicalModel.relations = [];
+    await configure({ execute: () => NEVER }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.voicePreview.set({
+      originalText: 'cambia la relación', commandType: 'CHANGE_RELATION_TYPE', summary: 'Cambiar relación',
+      command: { type: 'CHANGE_RELATION_TYPE', className: 'Cliente', secondaryClassName: 'Pedido', relationType: 'COMPOSITION' }, errors: [],
+    });
+    page.voiceState.set('ready');
+    page.applyVoiceCommand();
+
+    expect(page.voiceError()).toBe('No existe una relación entre las clases indicadas.');
+  });
+
+  it('removes an existing relation using reversed normalized endpoints', async () => {
+    const current = diagramWithTwoClassesAndRelation();
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure({
+      execute: (_id: string, value: ExecuteDiagramOperationRequest) => { request = value; return of({ newVersion: 8, canonicalModel: current.canonicalModel, viewState: current.viewState }); },
+    }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.voicePreview.set({
+      originalText: 'elimina la relación', commandType: 'REMOVE_RELATION', summary: 'Eliminar relación',
+      command: { type: 'REMOVE_RELATION', className: 'Pedído', secondaryClassName: ' cliente ' }, errors: [],
+    });
+    page.voiceState.set('ready');
+    page.applyVoiceCommand();
+
+    expect(request?.operation.type).toBe('DELETE_RELATION');
+    expect(request?.operation.payload).toEqual({ relationId: 'r1' });
+  });
   it('accepts XMI and image files and rejects unsupported formats', async () => {
     await configure({ execute: () => NEVER });
     const page = TestBed.createComponent(EditorPageComponent).componentInstance;
@@ -158,6 +329,25 @@ describe('EditorPageComponent', () => {
         ...detail.viewState,
         nodes: [{ classId: 'c1', x: 40, y: 50, width: 240, height: 180 }],
       },
+    };
+  }
+
+  function diagramWithTwoClassesAndRelation(): DiagramDetail {
+    return {
+      ...detail,
+      canonicalModel: {
+        ...detail.canonicalModel,
+        classes: [
+          { id: 'c1', name: 'Cliente', isAbstract: false, attributes: [], methods: [] },
+          { id: 'p1', name: 'Pedido', isAbstract: false, attributes: [], methods: [] },
+        ],
+        relations: [{
+          id: 'r1', sourceClassId: 'c1', targetClassId: 'p1', type: 'ASSOCIATION',
+          sourceMultiplicity: { lower: '1', upper: '1' }, targetMultiplicity: { lower: '1', upper: '1' },
+          sourceRole: null, targetRole: null, sourceNavigable: false, targetNavigable: false,
+        }],
+      },
+      viewState: { ...detail.viewState, nodes: [] },
     };
   }
 

@@ -44,14 +44,38 @@
 
   <div class="cards-grid project-grid">
     @for (project of filtered(); track project.id) {
-      <article class="card project-card">
+      <article
+        class="card project-card"
+        [class.menu-open]="openMenuId() === project.id"
+        role="link"
+        tabindex="0"
+        [attr.aria-label]="'Abrir proyecto ' + project.name"
+        (click)="openProject(project.id)"
+        (keydown)="onCardKeydown($event, project.id)"
+      >
         <div class="project-cover lavender">
           <span class="cover-shape">◇</span><span class="tag">UML</span>
         </div>
         <div class="project-body">
           <div class="project-title">
             <h3>{{ project.name }}</h3>
-            <span>•••</span>
+            <div class="project-menu-wrap">
+              <button
+                class="project-menu-trigger"
+                type="button"
+                aria-label="Más opciones del proyecto"
+                [attr.aria-expanded]="openMenuId() === project.id"
+                (click)="toggleMenu($event, project.id)"
+              >•••</button>
+              @if (openMenuId() === project.id) {
+                <div class="project-menu" [class.open-up]="openMenuUp()" role="menu" (click)="$event.stopPropagation()">
+                  <button type="button" role="menuitem" (click)="openShare($event, project.id)">Compartir</button>
+                  <button type="button" role="menuitem" (click)="openEdit($event, project)">Editar proyecto</button>
+                  <button type="button" role="menuitem" disabled title="Próximamente">Duplicar proyecto <span>Próximamente</span></button>
+                  <button type="button" role="menuitem" (click)="openDelete($event, project)">Eliminar proyecto</button>
+                </div>
+              }
+            </div>
           </div>
           <p>
             {{ project.description || 'Proyecto UML' }} · Actualizado
@@ -59,12 +83,42 @@
           </p>
           <div class="project-foot">
             <div class="avatars"><span class="avatar rose">SW</span></div>
-            <a [routerLink]="['/projects', project.id]">Abrir proyecto　›</a>
+            <a [routerLink]="['/projects', project.id]" (click)="$event.stopPropagation()">Abrir proyecto　›</a>
           </div>
         </div>
       </article>
     }
   </div>
+
+  <app-share-project-modal
+    [projectId]="shareProjectId()"
+    [currentUserRole]="shareRole()"
+    [open]="shareOpen()"
+    (close)="shareOpen.set(false)"
+  ></app-share-project-modal>
+
+  @if (editingProject(); as project) {
+    <div class="project-dialog-backdrop" role="presentation" (click)="closeEdit()">
+      <section class="project-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-project-title" (click)="$event.stopPropagation()">
+        <div class="panel-heading"><div><h2 id="edit-project-title">Editar proyecto</h2><p class="muted">Actualiza la información de tu espacio.</p></div><button class="btn btn-ghost" type="button" aria-label="Cerrar" (click)="closeEdit()">×</button></div>
+        <label>Nombre<input maxlength="150" [value]="editName()" (input)="editName.set($any($event.target).value)" /></label>
+        <label>Descripción<textarea [value]="editDescription()" (input)="editDescription.set($any($event.target).value)"></textarea></label>
+        @if (editError()) { <p class="error-message">{{ editError() }}</p> }
+        <div class="panel-actions"><button class="btn btn-ghost" type="button" (click)="closeEdit()">Cancelar</button><button class="btn btn-primary" type="button" [disabled]="editLoading() || !editName().trim() || editName().trim().length > 150 || (editName().trim() === project.name && editDescription() === (project.description || ''))" (click)="saveEdit()">{{ editLoading() ? 'Guardando...' : 'Guardar cambios' }}</button></div>
+      </section>
+    </div>
+  }
+
+  @if (deletingProject(); as project) {
+    <div class="project-dialog-backdrop" role="presentation" (click)="closeDelete()">
+      <section class="project-dialog confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-project-title" (click)="$event.stopPropagation()">
+        <h2 id="delete-project-title">¿Eliminar este proyecto?</h2>
+        <p>Se eliminarán también sus diagramas y datos asociados. Esta acción no se puede deshacer.</p>
+        @if (deleteError()) { <p class="error-message">{{ deleteError() }}</p> }
+        <div class="panel-actions"><button class="btn btn-ghost" type="button" (click)="closeDelete()">Cancelar</button><button class="btn btn-danger" type="button" [disabled]="deleteLoading()" (click)="confirmDelete()">{{ deleteLoading() ? 'Eliminando...' : 'Eliminar proyecto' }}</button></div>
+      </section>
+    </div>
+  }
 
   @if (showCreate()) {
     <div class="create-panel">
