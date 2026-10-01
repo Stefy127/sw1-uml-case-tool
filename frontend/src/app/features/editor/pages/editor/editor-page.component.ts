@@ -28,7 +28,7 @@ import { DiagramService } from '../../services/diagram.service';
 import { XmiImportService } from '../../services/xmi-import.service';
 import { ImageImportService } from '../../services/image-import.service';
 import { XmiImportResponse } from '../../models/xmi-import.model';
-import { VoiceCommandPreview } from '../../models/voice-command.model';
+import { VoiceCommand, VoiceCommandPreview } from '../../models/voice-command.model';
 import { VoiceCommandParserService } from '../../services/voice-command-parser.service';
 import { VoiceRecognitionService } from '../../services/voice-recognition.service';
 import { AiVoiceCommandService } from '../../services/ai-voice-command.service';
@@ -586,14 +586,16 @@ export class EditorPageComponent implements OnDestroy {
     const result = this.voiceParser.parse(this.voiceText());
     const command = result.command;
     const commandType = command?.type ?? null;
+    const readOnly = command ? this.isVoiceReadCommand(command) : false;
     this.voicePreview.set({
       originalText: this.voiceText(),
       commandType,
-      summary: result.success ? this.voiceSummary(command!) : '',
+      summary: result.success ? (readOnly ? this.voiceReadSummary(command!, current!) : this.voiceSummary(command!)) : '',
       command,
       errors: result.errors,
       source: 'LOCAL',
       confidence: null,
+      readOnly,
     });
     this.voiceError.set(result.errors.join(' '));
     this.voiceState.set(result.success ? 'ready' : 'error');
@@ -614,7 +616,8 @@ export class EditorPageComponent implements OnDestroy {
         const command = response.command;
         const validConfidence = response.confidence == null || response.confidence >= 0.75;
         const errors = response.success && validConfidence ? (response.errors ?? []) : response.success ? ['No estoy suficientemente seguro de la interpretación.'] : (response.errors?.length ? response.errors : ['El servicio de IA devolvió una respuesta no válida.']);
-        this.voicePreview.set({ originalText: this.voiceText(), commandType: command?.type ?? null, summary: response.summary ?? (command ? this.voiceSummary(command) : ''), command: errors.length ? null : command, errors, source: 'AI', confidence: response.confidence });
+        const readOnly = command ? this.isVoiceReadCommand(command) : false;
+        this.voicePreview.set({ originalText: this.voiceText(), commandType: command?.type ?? null, summary: response.success && command ? (readOnly ? this.voiceReadSummary(command, current) : (response.summary ?? this.voiceSummary(command))) : '', command: errors.length ? null : command, errors, source: 'AI', confidence: response.confidence, readOnly });
         this.voiceError.set(errors.join(' '));
         this.aiParsing.set(false);
         this.voiceState.set(errors.length ? 'error' : 'ready');
@@ -627,32 +630,52 @@ export class EditorPageComponent implements OnDestroy {
     if (this.isReadOnly()) return;
     const command = this.voicePreview()?.command;
     const current = this.diagram();
-    if (!command || !current || this.voiceState() === 'applying') return;
+    if (!command || !current || this.voiceState() === 'applying' || this.isVoiceReadCommand(command)) return;
     const classByName = (name?: string) => this.findCurrentClass(name, current);
     const target = classByName(command.className);
-    if (['DELETE_CLASS', 'RENAME_CLASS', 'ADD_ATTRIBUTE', 'REMOVE_ATTRIBUTE'].includes(command.type) && !target) {
+    if (['DELETE_CLASS', 'RENAME_CLASS', 'ADD_ATTRIBUTE', 'RENAME_ATTRIBUTE', 'CHANGE_ATTRIBUTE_TYPE', 'REMOVE_ATTRIBUTE', 'ADD_METHOD', 'RENAME_METHOD', 'REMOVE_METHOD'].includes(command.type) && !target) {
       this.voiceState.set('error'); this.voiceError.set(`No existe la clase ${command.className}.`); return;
     }
-    if (command.type === 'ADD_METHOD' && !target) {
-      this.voiceState.set('error'); this.voiceError.set(`No existe la clase ${command.className}.`); return;
-    }
-    let type: DiagramOperationType = command.type;
+    let type: DiagramOperationType;
     let payload: unknown;
     if (command.type === 'CREATE_CLASS') {
+      type = 'CREATE_CLASS';
       const point = this.voiceClassPosition();
       payload = { classId: crypto.randomUUID(), name: command.className, isAbstract: false, ...point, width: 240, height: 180 };
-    } else if (command.type === 'DELETE_CLASS') payload = { classId: target!.id };
-    else if (command.type === 'RENAME_CLASS') payload = { classId: target!.id, name: command.newClassName };
-    else if (command.type === 'ADD_ATTRIBUTE') payload = { classId: target!.id, attribute: { id: crypto.randomUUID(), name: command.attributeName, type: command.attributeType, visibility: 'PRIVATE', isStatic: false, isFinal: false, defaultValue: null, primaryKey: false } };
-    else if (command.type === 'REMOVE_ATTRIBUTE') {
-      const attribute = target!.attributes.find((item) => item.name.toLowerCase() === command.attributeName?.toLowerCase());
+    } else if (command.type === 'DELETE_CLASS') { type = 'DELETE_CLASS'; payload = { classId: target!.id }; }
+    else if (command.type === 'RENAME_CLASS') { type = 'RENAME_CLASS'; payload = { classId: target!.id, name: command.newClassName }; }
+    else if (command.type === 'ADD_ATTRIBUTE') { type = 'ADD_ATTRIBUTE'; payload = { classId: target!.id, attribute: { id: crypto.randomUUID(), name: command.attributeName, type: command.attributeType, visibility: 'PRIVATE', isStatic: false, isFinal: false, defaultValue: null, primaryKey: false } }; }
+    else if (['RENAME_ATTRIBUTE', 'CHANGE_ATTRIBUTE_TYPE', 'REMOVE_ATTRIBUTE'].includes(command.type)) {
+      const attribute = target!.attributes.find((item) => normalizeClassName(item.name) === normalizeClassName(command.attributeName));
       if (!attribute) { this.voiceState.set('error'); this.voiceError.set(`No existe el atributo ${command.attributeName}.`); return; }
-      payload = { classId: target!.id, attributeId: attribute.id };
-    } else if (command.type === 'ADD_METHOD') payload = { classId: target!.id, method: { id: crypto.randomUUID(), name: command.methodName, returnType: 'void', visibility: 'PUBLIC', isStatic: false, parameters: [] } };
+      if (command.type === 'REMOVE_ATTRIBUTE') { type = 'REMOVE_ATTRIBUTE'; payload = { classId: target!.id, attributeId: attribute.id }; }
+      else { type = 'UPDATE_ATTRIBUTE'; payload = { classId: target!.id, attributeId: attribute.id, name: command.newAttributeName ?? attribute.name, type: command.attributeType ?? attribute.type, visibility: attribute.visibility, isStatic: attribute.isStatic ?? attribute.static ?? false, isFinal: attribute.isFinal ?? attribute.final ?? false, defaultValue: attribute.defaultValue, primaryKey: attribute.primaryKey }; }
+    } else if (command.type === 'ADD_METHOD') { type = 'ADD_METHOD'; payload = { classId: target!.id, method: { id: crypto.randomUUID(), name: command.methodName, returnType: command.returnType ?? 'void', visibility: 'PUBLIC', isStatic: false, parameters: [] } }; }
+    else if (['RENAME_METHOD', 'REMOVE_METHOD'].includes(command.type)) {
+      const method = target!.methods.find((item) => normalizeClassName(item.name) === normalizeClassName(command.methodName));
+      if (!method) { this.voiceState.set('error'); this.voiceError.set(`No existe el método ${command.methodName}.`); return; }
+      if (command.type === 'REMOVE_METHOD') { type = 'REMOVE_METHOD'; payload = { classId: target!.id, methodId: method.id }; }
+      else { type = 'UPDATE_METHOD'; payload = { classId: target!.id, methodId: method.id, name: command.newMethodName ?? method.name, returnType: command.returnType ?? method.returnType, visibility: method.visibility, isStatic: method.isStatic ?? method.static ?? false }; }
+    }
     else {
-      const source = classByName(command.className), destination = classByName(command.secondaryClassName);
+      const firstClassName = command.className?.trim() || command.sourceClassName;
+      const secondClassName = command.secondaryClassName?.trim() || command.targetClassName;
+      const source = classByName(firstClassName), destination = classByName(secondClassName);
       if (!source || !destination) { this.voiceState.set('error'); this.voiceError.set('No existe una de las clases indicadas.'); return; }
-      payload = { relation: { id: crypto.randomUUID(), sourceClassId: source.id, targetClassId: destination.id, type: command.relationType, sourceMultiplicity: { lower: '1', upper: '1' }, targetMultiplicity: { lower: '1', upper: '1' }, sourceRole: null, targetRole: null, sourceNavigable: false, targetNavigable: false } };
+      const undirectedRelationType = (value: string | undefined) => value === 'ASSOCIATION' || value === 'AGGREGATION' || value === 'COMPOSITION';
+      const relation = current.canonicalModel.relations.find((item) => {
+        const direct = item.sourceClassId === source.id && item.targetClassId === destination.id;
+        const reverse = item.sourceClassId === destination.id && item.targetClassId === source.id;
+        if (direct) return true;
+        if (!reverse) return false;
+        if (command.type === 'CHANGE_RELATION_TYPE') return undirectedRelationType(command.relationType) && undirectedRelationType(item.type);
+        return undirectedRelationType(item.type);
+      });
+      if (command.type === 'REMOVE_RELATION' || command.type === 'CHANGE_RELATION_TYPE') {
+        if (!relation) { this.voiceState.set('error'); this.voiceError.set('No existe una relación entre las clases indicadas.'); return; }
+        type = command.type === 'REMOVE_RELATION' ? 'DELETE_RELATION' : 'CHANGE_RELATION_TYPE';
+        payload = command.type === 'REMOVE_RELATION' ? { relationId: relation.id } : { relationId: relation.id, type: command.relationType };
+      } else { type = 'CREATE_RELATION'; payload = { relation: { id: crypto.randomUUID(), sourceClassId: source.id, targetClassId: destination.id, type: command.relationType, sourceMultiplicity: { lower: '1', upper: '1' }, targetMultiplicity: { lower: '1', upper: '1' }, sourceRole: null, targetRole: null, sourceNavigable: false, targetNavigable: false } }; }
     }
     this.voiceState.set('applying'); this.voiceError.set('');
     this.operationService.execute(this.diagramId, { operation: { operationId: crypto.randomUUID(), diagramId: this.diagramId, userId: DEV_USER_ID, baseVersion: current.version, type, payload: payload as never } }).subscribe({
@@ -667,9 +690,30 @@ export class EditorPageComponent implements OnDestroy {
     return { x: Math.max(0, ((rect?.width ?? 600) / 2 - 120 - this.panX()) / this.zoom()), y: Math.max(0, ((rect?.height ?? 400) / 2 - 30 - this.panY()) / this.zoom()) };
   }
 
-  private voiceDiagramContext(current: DiagramDetail): { classes: Array<{ id: string; name: string }> } {
-    const context = { classes: current.canonicalModel.classes.map((item) => ({ id: item.id, name: item.name })) };
-    console.debug('[VOICE CURRENT DIAGRAM]', { version: current.version, classes: context.classes.map((item) => item.name), relations: current.canonicalModel.relations.length });
+  private voiceDiagramContext(current: DiagramDetail): import('../../models/ai-voice.model').VoiceDiagramContext {
+    const context = {
+      classes: current.canonicalModel.classes.map((item) => ({
+        id: item.id,
+        name: item.name,
+        attributes: item.attributes.map((attribute) => ({ id: attribute.id, name: attribute.name, type: attribute.type })),
+        methods: item.methods.map((method) => ({
+          id: method.id,
+          name: method.name,
+          returnType: method.returnType,
+          parameters: method.parameters.map((parameter) => ({ id: parameter.id, name: parameter.name, type: parameter.type })),
+        })),
+      })),
+      relations: current.canonicalModel.relations.map((relation) => ({
+        id: relation.id,
+        sourceClassId: relation.sourceClassId,
+        targetClassId: relation.targetClassId,
+        type: relation.type,
+        sourceMultiplicity: relation.sourceMultiplicity,
+        targetMultiplicity: relation.targetMultiplicity,
+      })),
+      associationClassLinks: current.canonicalModel.associationClassLinks ?? [],
+    };
+    console.debug('[VOICE CURRENT DIAGRAM]', { version: current.version, classes: context.classes.map((item) => item.name), relations: context.relations.length });
     return context;
   }
 
@@ -678,7 +722,21 @@ export class EditorPageComponent implements OnDestroy {
     return current.canonicalModel.classes.find((item) => normalizeClassName(item.name) === normalized);
   }
 
+  private isVoiceReadCommand(command: VoiceCommand): boolean { return ['LIST_CLASSES', 'READ_CLASS_ATTRIBUTES', 'READ_CLASS_METHODS', 'READ_CLASS_RELATIONS'].includes(command.type); }
+
+  private voiceReadSummary(command: VoiceCommand, current: DiagramDetail): string {
+    if (command.type === 'LIST_CLASSES') return current.canonicalModel.classes.length ? `Clases: ${current.canonicalModel.classes.map((item) => item.name).join(', ')}` : 'No hay clases en el diagrama.';
+    const target = this.findCurrentClass(command.className, current);
+    if (!target) return `No existe la clase ${command.className}.`;
+    if (command.type === 'READ_CLASS_ATTRIBUTES') return target.attributes.length ? `Atributos de ${target.name}: ${target.attributes.map((item) => `${item.name}: ${item.type}`).join(', ')}` : `${target.name} no tiene atributos.`;
+    if (command.type === 'READ_CLASS_METHODS') return target.methods.length ? `Métodos de ${target.name}: ${target.methods.map((item) => `${item.name}(): ${item.returnType}`).join(', ')}` : `${target.name} no tiene métodos.`;
+    const relations = current.canonicalModel.relations.filter((item) => item.sourceClassId === target.id || item.targetClassId === target.id).map((item) => { const otherId = item.sourceClassId === target.id ? item.targetClassId : item.sourceClassId; return `${item.type} con ${current.canonicalModel.classes.find((candidate) => candidate.id === otherId)?.name ?? otherId}`; });
+    return relations.length ? `Relaciones de ${target.name}: ${relations.join(', ')}` : `${target.name} no tiene relaciones.`;
+  }
+
   private voiceSummary(command: NonNullable<VoiceCommandPreview['command']>): string {
+    const labels: Record<string, string> = { DELETE_CLASS: 'Eliminar clase', RENAME_CLASS: 'Renombrar clase', RENAME_ATTRIBUTE: 'Renombrar atributo', CHANGE_ATTRIBUTE_TYPE: 'Cambiar tipo de atributo', REMOVE_ATTRIBUTE: 'Eliminar atributo', RENAME_METHOD: 'Renombrar método', REMOVE_METHOD: 'Eliminar método', REMOVE_RELATION: 'Eliminar relación', CHANGE_RELATION_TYPE: 'Cambiar tipo de relación' };
+    if (labels[command.type]) return `${labels[command.type]} ${command.className ?? ''}`;
     return command.type === 'CREATE_CLASS' ? `Crear clase ${command.className}` : command.type === 'CREATE_RELATION' ? `Crear ${command.relationType?.toLowerCase()} entre ${command.className} y ${command.secondaryClassName}` : command.type === 'ADD_ATTRIBUTE' ? `Agregar atributo ${command.attributeName}: ${command.attributeType} a ${command.className}` : command.type === 'ADD_METHOD' ? `Agregar método ${command.methodName} a ${command.className}` : command.type === 'RENAME_CLASS' ? `Renombrar ${command.className} a ${command.newClassName}` : `${command.type === 'DELETE_CLASS' ? 'Eliminar clase' : 'Eliminar atributo'} ${command.className}`;
   }
 
@@ -1197,7 +1255,7 @@ export class EditorPageComponent implements OnDestroy {
   multiplicityValue(multiplicity: Multiplicity | null | undefined): string {
     if (!multiplicity) return '';
     return multiplicity.lower === multiplicity.upper
-      ? multiplicity.lower
+      ? `${multiplicity.lower}..${multiplicity.upper}`
       : `${multiplicity.lower}..${multiplicity.upper}`;
   }
 
@@ -2575,7 +2633,7 @@ export class EditorPageComponent implements OnDestroy {
   multiplicityLabel(multiplicity: { lower: string; upper: string } | null | undefined): string {
     if (!multiplicity) return '';
     return multiplicity.lower === multiplicity.upper
-      ? multiplicity.lower
+      ? `${multiplicity.lower}..${multiplicity.upper}`
       : `${multiplicity.lower}..${multiplicity.upper}`;
   }
 

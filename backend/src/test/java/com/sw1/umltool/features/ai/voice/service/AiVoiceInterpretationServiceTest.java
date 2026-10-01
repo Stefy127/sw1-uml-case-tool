@@ -54,6 +54,18 @@ class AiVoiceInterpretationServiceTest {
         }
     }
 
+    @Test
+    void acceptsVoiceCrudCommandFields() throws Exception {
+        HttpServer server = server(exchange -> respond(exchange, 200, "{\"success\":true,\"command\":{\"type\":\"RENAME_ATTRIBUTE\",\"className\":\"cliente\",\"attributeName\":\"nombre\",\"newAttributeName\":\"nombreCompleto\"},\"confidence\":0.95,\"summary\":\"Renombrar atributo\",\"errors\":[]}"));
+        try {
+            var command = serviceFor(server, 10, 30).interpret(REQUEST).command();
+            assertEquals("RENAME_ATTRIBUTE", command.type());
+            assertEquals("nombreCompleto", command.newAttributeName());
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private HttpServer server(HttpHandler handler) throws IOException {
         var server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/interpret", exchange -> handler.handle(exchange));

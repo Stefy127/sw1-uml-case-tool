@@ -17,8 +17,11 @@ public record AiVoiceInterpretResponse(
             String targetClassName,
             String newClassName,
             String attributeName,
+            String newAttributeName,
             String attributeType,
             String methodName,
+            String newMethodName,
+            String returnType,
             String relationType
     ) {}
 }

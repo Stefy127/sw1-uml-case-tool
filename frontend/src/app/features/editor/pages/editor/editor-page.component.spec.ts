@@ -42,6 +42,19 @@ function configure(operationService: object, current = detail, xmiImport: object
 }
 
 describe('EditorPageComponent', () => {
+  it.each([
+    [{ lower: '1', upper: '1' }, '1..1'],
+    [{ lower: '0', upper: '1' }, '0..1'],
+    [{ lower: '0', upper: '*' }, '0..*'],
+    [{ lower: '1', upper: '*' }, '1..*'],
+  ])('formats multiplicity %j as %s', async (multiplicity, expected) => {
+    await configure({ execute: () => NEVER });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    expect(page.multiplicityLabel(multiplicity)).toBe(expected);
+    expect(page.multiplicityValue(multiplicity)).toBe(expected);
+  });
+
   it('normalizes class names for case, accents and surrounding whitespace', () => {
     expect(normalizeClassName('Cliente')).toBe(normalizeClassName('cliente'));
     expect(normalizeClassName('Cliente')).toBe(normalizeClassName('CLIENTE'));
@@ -97,6 +110,105 @@ describe('EditorPageComponent', () => {
 
     expect(executed).toBe(true);
     expect(page.voiceError()).toBe('');
+  });
+
+  it.each([
+    ['Cliente', 'Pedido'],
+    ['cliente', 'pedido'],
+    ['Clíente', 'Pedído'],
+  ])('changes an existing association to composition for %s/%s', async (className, secondaryClassName) => {
+    const current = diagramWithTwoClassesAndRelation();
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure({
+      execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
+        request = value;
+        return of({ newVersion: 8, canonicalModel: { ...current.canonicalModel, relations: [{ ...current.canonicalModel.relations[0], type: 'COMPOSITION' }] }, viewState: current.viewState });
+      },
+    }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.voicePreview.set({
+      originalText: 'cambia la relación',
+      commandType: 'CHANGE_RELATION_TYPE',
+      summary: 'Cambiar relación',
+      command: { type: 'CHANGE_RELATION_TYPE', className, secondaryClassName, relationType: 'COMPOSITION' },
+      errors: [],
+    });
+    page.voiceState.set('ready');
+    page.applyVoiceCommand();
+
+    expect(request?.operation.type).toBe('CHANGE_RELATION_TYPE');
+    expect(request?.operation.payload).toEqual({ relationId: 'r1', type: 'COMPOSITION' });
+    expect(page.voiceError()).toBe('');
+  });
+
+  it('changes an association using reversed endpoints when the pair is unambiguous', async () => {
+    const current = diagramWithTwoClassesAndRelation();
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure({
+      execute: (_id: string, value: ExecuteDiagramOperationRequest) => {
+        request = value;
+        return of({ newVersion: 8, canonicalModel: current.canonicalModel, viewState: current.viewState });
+      },
+    }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.voicePreview.set({
+      originalText: 'cambia la relación', commandType: 'CHANGE_RELATION_TYPE', summary: 'Cambiar relación',
+      command: { type: 'CHANGE_RELATION_TYPE', className: 'Pedido', secondaryClassName: 'Cliente', relationType: 'AGGREGATION' }, errors: [],
+    });
+    page.voiceState.set('ready');
+    page.applyVoiceCommand();
+
+    expect(request?.operation.payload).toEqual({ relationId: 'r1', type: 'AGGREGATION' });
+  });
+
+  it('accepts sourceClassName and targetClassName as compatibility fields', async () => {
+    const current = diagramWithTwoClassesAndRelation();
+    let executed = false;
+    await configure({
+      execute: () => { executed = true; return of({ newVersion: 8, canonicalModel: current.canonicalModel, viewState: current.viewState }); },
+    }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.voicePreview.set({
+      originalText: 'cambia la relación', commandType: 'CHANGE_RELATION_TYPE', summary: 'Cambiar relación',
+      command: { type: 'CHANGE_RELATION_TYPE', sourceClassName: 'cliente', targetClassName: 'pedido', relationType: 'COMPOSITION' }, errors: [],
+    });
+    page.voiceState.set('ready');
+    page.applyVoiceCommand();
+
+    expect(executed).toBe(true);
+  });
+
+  it('keeps the relation-not-found error when no pair exists', async () => {
+    const current = diagramWithTwoClassesAndRelation();
+    current.canonicalModel.relations = [];
+    await configure({ execute: () => NEVER }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.voicePreview.set({
+      originalText: 'cambia la relación', commandType: 'CHANGE_RELATION_TYPE', summary: 'Cambiar relación',
+      command: { type: 'CHANGE_RELATION_TYPE', className: 'Cliente', secondaryClassName: 'Pedido', relationType: 'COMPOSITION' }, errors: [],
+    });
+    page.voiceState.set('ready');
+    page.applyVoiceCommand();
+
+    expect(page.voiceError()).toBe('No existe una relación entre las clases indicadas.');
+  });
+
+  it('removes an existing relation using reversed normalized endpoints', async () => {
+    const current = diagramWithTwoClassesAndRelation();
+    let request: ExecuteDiagramOperationRequest | undefined;
+    await configure({
+      execute: (_id: string, value: ExecuteDiagramOperationRequest) => { request = value; return of({ newVersion: 8, canonicalModel: current.canonicalModel, viewState: current.viewState }); },
+    }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.voicePreview.set({
+      originalText: 'elimina la relación', commandType: 'REMOVE_RELATION', summary: 'Eliminar relación',
+      command: { type: 'REMOVE_RELATION', className: 'Pedído', secondaryClassName: ' cliente ' }, errors: [],
+    });
+    page.voiceState.set('ready');
+    page.applyVoiceCommand();
+
+    expect(request?.operation.type).toBe('DELETE_RELATION');
+    expect(request?.operation.payload).toEqual({ relationId: 'r1' });
   });
   it('accepts XMI and image files and rejects unsupported formats', async () => {
     await configure({ execute: () => NEVER });
@@ -217,6 +329,25 @@ describe('EditorPageComponent', () => {
         ...detail.viewState,
         nodes: [{ classId: 'c1', x: 40, y: 50, width: 240, height: 180 }],
       },
+    };
+  }
+
+  function diagramWithTwoClassesAndRelation(): DiagramDetail {
+    return {
+      ...detail,
+      canonicalModel: {
+        ...detail.canonicalModel,
+        classes: [
+          { id: 'c1', name: 'Cliente', isAbstract: false, attributes: [], methods: [] },
+          { id: 'p1', name: 'Pedido', isAbstract: false, attributes: [], methods: [] },
+        ],
+        relations: [{
+          id: 'r1', sourceClassId: 'c1', targetClassId: 'p1', type: 'ASSOCIATION',
+          sourceMultiplicity: { lower: '1', upper: '1' }, targetMultiplicity: { lower: '1', upper: '1' },
+          sourceRole: null, targetRole: null, sourceNavigable: false, targetNavigable: false,
+        }],
+      },
+      viewState: { ...detail.viewState, nodes: [] },
     };
   }
 

@@ -5,6 +5,11 @@ import com.sw1.umltool.features.project.model.ProjectMemberEntity;
 import com.sw1.umltool.features.project.model.ProjectMemberRole;
 import com.sw1.umltool.features.project.repository.ProjectMemberRepository;
 import com.sw1.umltool.features.project.repository.ProjectRepository;
+import com.sw1.umltool.features.project.dto.UpdateProjectRequest;
+import com.sw1.umltool.features.project.exception.ProjectForbiddenException;
+import com.sw1.umltool.features.project.exception.ProjectNotFoundException;
+import com.sw1.umltool.features.diagram.repository.DiagramRepository;
+import com.sw1.umltool.features.auth.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,13 +26,19 @@ class ProjectServiceTest {
 
     private ProjectRepository projectRepository;
     private ProjectMemberRepository projectMemberRepository;
+    private DiagramRepository diagramRepository;
+    private UserRepository userRepository;
+    private ProjectAccessService access;
     private ProjectService service;
 
     @BeforeEach
     void setUp() {
         projectRepository = mock(ProjectRepository.class);
         projectMemberRepository = mock(ProjectMemberRepository.class);
-        service = new ProjectService(projectRepository, projectMemberRepository);
+        diagramRepository = mock(DiagramRepository.class);
+        userRepository = mock(UserRepository.class);
+        access = mock(ProjectAccessService.class);
+        service = new ProjectService(projectRepository, projectMemberRepository, userRepository, access, diagramRepository);
         when(projectRepository.save(any(ProjectEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(projectMemberRepository.save(any(ProjectMemberEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
@@ -54,5 +65,71 @@ class ProjectServiceTest {
     @Test
     void emptyOwnerFails() {
         assertThrows(IllegalArgumentException.class, () -> service.createProject("CRM", "Description", ""));
+    }
+
+    @Test
+    void ownerUpdatesNameAndDescription() {
+        ProjectEntity project = project();
+        when(projectRepository.findById("project-1")).thenReturn(java.util.Optional.of(project));
+        UpdateProjectRequest request = new UpdateProjectRequest();
+        request.setName(" Nuevo ");
+        request.setDescription("Updated description");
+
+        ProjectEntity updated = service.updateProject("project-1", "owner-1", request);
+
+        assertEquals("Nuevo", updated.getName());
+        assertEquals("Updated description", updated.getDescription());
+        verify(projectRepository).save(project);
+    }
+
+    @Test
+    void blankOrTooLongNameFails() {
+        ProjectEntity project = project();
+        when(projectRepository.findById("project-1")).thenReturn(java.util.Optional.of(project));
+        UpdateProjectRequest blank = new UpdateProjectRequest();
+        blank.setName("  ");
+        assertThrows(IllegalArgumentException.class, () -> service.updateProject("project-1", "owner-1", blank));
+        UpdateProjectRequest longName = new UpdateProjectRequest();
+        longName.setName("x".repeat(151));
+        assertThrows(IllegalArgumentException.class, () -> service.updateProject("project-1", "owner-1", longName));
+    }
+
+    @Test
+    void editorIsForbiddenFromUpdating() {
+        ProjectEntity project = project();
+        when(projectRepository.findById("project-1")).thenReturn(java.util.Optional.of(project));
+        org.mockito.Mockito.doThrow(new ProjectForbiddenException()).when(access).requireOwner("project-1", "editor-1");
+        UpdateProjectRequest request = new UpdateProjectRequest();
+        request.setName("Updated");
+        assertThrows(ProjectForbiddenException.class, () -> service.updateProject("project-1", "editor-1", request));
+    }
+
+    @Test
+    void ownerDeletesDiagramsMembersAndProject() {
+        when(projectRepository.existsById("project-1")).thenReturn(true);
+
+        service.deleteProject("project-1", "owner-1");
+
+        verify(diagramRepository).deleteByProjectId("project-1");
+        verify(projectMemberRepository).deleteByProjectId("project-1");
+        verify(projectRepository).deleteById("project-1");
+    }
+
+    @Test
+    void deletingMissingProjectReturnsNotFound() {
+        when(projectRepository.existsById("missing")).thenReturn(false);
+        assertThrows(ProjectNotFoundException.class, () -> service.deleteProject("missing", "owner-1"));
+    }
+
+    @Test
+    void editorIsForbiddenFromDeleting() {
+        when(projectRepository.existsById("project-1")).thenReturn(true);
+        org.mockito.Mockito.doThrow(new ProjectForbiddenException()).when(access).requireOwner("project-1", "editor-1");
+        assertThrows(ProjectForbiddenException.class, () -> service.deleteProject("project-1", "editor-1"));
+        org.mockito.Mockito.verifyNoInteractions(diagramRepository);
+    }
+
+    private ProjectEntity project() {
+        return ProjectEntity.builder().id("project-1").name("CRM").description("Description").ownerUserId("owner-1").build();
     }
 }
