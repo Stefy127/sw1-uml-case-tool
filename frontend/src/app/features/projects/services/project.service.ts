@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { API_BASE_URL } from '../../../core/config/api.config';
-import { CreateProjectRequest, Project, ProjectMember, ProjectMemberRole, ProjectShareMode, ShareLinkResponse, SharedProjectResponse } from '../models/project.model';
+import { CreateProjectRequest, Project, ProjectMember, ProjectMemberRole, ProjectShareMode, ShareLinkResponse, SharedProjectResponse, UpdateProjectRequest } from '../models/project.model';
 
 @Injectable({ providedIn: 'root' })
 export class ProjectService {
@@ -23,6 +23,8 @@ export class ProjectService {
   createProject(request: CreateProjectRequest): Observable<Project> {
     return this.http.post<Project>(this.projectsUrl, request);
   }
+  updateProject(projectId: string, payload: UpdateProjectRequest): Observable<Project> { return this.http.patch<Project>(`${this.projectsUrl}/${projectId}`, payload); }
+  deleteProject(projectId: string): Observable<void> { return this.http.delete<void>(`${this.projectsUrl}/${projectId}`); }
   getSharedProjects(): Observable<Project[]> { return this.http.get<Project[]>(`${this.projectsUrl}/shared`); }
   getMembers(projectId: string): Observable<ProjectMember[]> { return this.http.get<ProjectMember[]>(`${this.projectsUrl}/${projectId}/members`); }
   addMember(projectId: string, email: string, role: ProjectMemberRole): Observable<ProjectMember> { return this.http.post<ProjectMember>(`${this.projectsUrl}/${projectId}/members`, { email, role }); }

@@ -65,7 +65,23 @@
   display: none;
 }
 .project-card {
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+.project-card.menu-open {
+  z-index: 10;
+}
+.project-card:hover,
+.project-card:focus-visible {
+  border-color: #c9bdf8;
+  box-shadow: 0 14px 30px rgb(86 69 169 / 12%);
+  transform: translateY(-3px);
+  outline: none;
+}
+.project-card:focus-visible {
+  box-shadow: 0 0 0 3px rgb(126 103 226 / 24%), 0 14px 30px rgb(86 69 169 / 12%);
 }
 .project-cover {
   height: 150px;
@@ -73,6 +89,7 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 .project-cover.lavender {
   background: #ebe8ff;
@@ -107,17 +124,46 @@
   display: flex;
   justify-content: space-between;
   gap: 8px;
+  align-items: flex-start;
 }
 .project-title h3 {
   font-size: 17px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.project-title span {
+.project-title > span {
   color: #91a0b8;
 }
+.project-menu-wrap { position: relative; }
+.project-menu-trigger { display: grid; width: 34px; height: 34px; place-items: center; margin: -8px -8px 0 0; border: 0; border-radius: 10px; background: transparent; color: #8190aa; cursor: pointer; font: inherit; font-size: 16px; letter-spacing: 2px; }
+.project-menu-trigger:hover, .project-menu-trigger:focus-visible { background: var(--color-primary-soft); color: var(--color-primary); outline: none; }
+.project-menu { position: absolute; z-index: 20; top: 32px; right: 0; display: grid; min-width: 190px; padding: 6px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); box-shadow: var(--shadow-md); }
+.project-menu.open-up { top: auto; bottom: 32px; }
+.project-menu button { display: flex; justify-content: space-between; gap: 12px; padding: 10px 11px; border: 0; border-radius: 8px; background: transparent; color: var(--color-text); cursor: pointer; font: inherit; font-size: 12px; text-align: left; }
+.project-menu button:hover:not(:disabled), .project-menu button:focus-visible:not(:disabled) { background: var(--color-primary-soft); color: var(--color-primary); outline: none; }
+.project-menu button:disabled { color: var(--color-text-muted); cursor: not-allowed; opacity: .7; }
+.project-menu button span { color: var(--color-text-muted); font-size: 10px; }
+.project-dialog-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 16px; background: rgb(42 35 75 / 22%); backdrop-filter: blur(4px); }
+.project-dialog { width: min(480px, 100%); padding: 26px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-md); }
+.project-dialog label { display: grid; gap: 7px; margin-top: 16px; color: var(--color-text-muted); font-size: 13px; }
+.project-dialog input, .project-dialog textarea { box-sizing: border-box; width: 100%; padding: 11px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-background); color: var(--color-text); font: inherit; }
+.project-dialog textarea { min-height: 92px; resize: vertical; }
+.project-dialog > p { margin-top: 12px; color: var(--color-text-muted); line-height: 1.55; }
+.project-dialog .panel-actions { margin-top: 22px; }
+.btn-danger { border: 0; border-radius: var(--radius-sm); background: var(--color-danger); color: white; cursor: pointer; font: inherit; font-weight: 700; padding: 10px 16px; }
+.btn-danger:disabled { cursor: wait; opacity: .65; }
 .project-body p {
   margin-top: 8px;
   color: var(--color-text-muted);
   font-size: 12px;
+  display: -webkit-box;
+  min-height: 35px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.45;
 }
 .project-foot {
   display: flex;
@@ -213,4 +259,10 @@
   .head-actions .search-box {
     display: flex;
   }
+  .project-grid { grid-template-columns: 1fr; gap: 16px; }
+  .project-cover { height: 132px; }
+  .project-dialog { padding: 22px; }
+}
+@media (min-width: 701px) and (max-width: 1050px) {
+  .project-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 }

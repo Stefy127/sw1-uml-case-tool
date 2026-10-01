@@ -10,6 +10,7 @@ import java.util.Optional;
 public interface ProjectMemberRepository extends JpaRepository<ProjectMemberEntity, String> {
 
     List<ProjectMemberEntity> findByProjectId(String projectId);
+    void deleteByProjectId(String projectId);
 
     Optional<ProjectMemberEntity> findByProjectIdAndUserId(String projectId, String userId);
 

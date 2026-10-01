@@ -344,6 +344,8 @@
   .title-line h1 {
     font-size: 25px;
   }
+  .detail-actions { width: 100%; flex-wrap: wrap; }
+  .detail-actions .btn { flex: 1 1 150px; }
   .list-heading {
     align-items: flex-start;
     gap: 15px;
@@ -360,6 +362,8 @@
   .panel-actions .btn {
     width: 100%;
   }
+  .modal-backdrop { padding: 10px; }
+  .create-panel { max-height: calc(100dvh - 20px); overflow-y: auto; }
   .share-panel { padding: 22px; }
   .member-add-row { grid-template-columns: 1fr; }
   .member-row { align-items: flex-start; flex-wrap: wrap; }

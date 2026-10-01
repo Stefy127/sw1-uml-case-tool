@@ -32,4 +32,19 @@ describe('ProjectService', () => {
     expect(request.request.body).toEqual(body);
     request.flush(body);
   });
+
+  it('updates a project with PATCH', () => {
+    service.updateProject('p1', { name: 'Updated', description: 'Details' }).subscribe();
+    const request = http.expectOne(`${API_BASE_URL}/projects/p1`);
+    expect(request.request.method).toBe('PATCH');
+    expect(request.request.body).toEqual({ name: 'Updated', description: 'Details' });
+    request.flush({ id: 'p1', name: 'Updated' });
+  });
+
+  it('deletes a project', () => {
+    service.deleteProject('p1').subscribe();
+    const request = http.expectOne(`${API_BASE_URL}/projects/p1`);
+    expect(request.request.method).toBe('DELETE');
+    request.flush(null);
+  });
 });
