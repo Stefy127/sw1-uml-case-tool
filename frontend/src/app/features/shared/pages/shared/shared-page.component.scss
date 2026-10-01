@@ -11,9 +11,9 @@
 .cover-tag { align-self: flex-start; padding: 5px 9px; border-radius: 7px; color: var(--color-primary); background: rgb(255 255 255 / 75%); font-size: 11px; font-weight: 800; }
 .shared-body { padding: 20px; }
 .shared-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.shared-title h2 { overflow: hidden; margin: 0; color: var(--color-text); font-size: 18px; text-overflow: ellipsis; white-space: nowrap; }
+.shared-title h2 { min-width: 0; overflow: hidden; margin: 0; color: var(--color-text); font-size: 18px; text-overflow: ellipsis; white-space: nowrap; }
 .shared-menu { color: #9aa8bd; letter-spacing: 2px; }
-.shared-description { min-height: 38px; margin: 9px 0 18px; color: var(--color-text-muted); font-size: 13px; line-height: 1.5; }
+.shared-description { min-height: 38px; margin: 9px 0 18px; color: var(--color-text-muted); font-size: 13px; line-height: 1.5; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .shared-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--color-text-muted); font-size: 12px; }
 .role-badge { padding: 5px 9px; border-radius: 7px; color: var(--color-primary); background: var(--color-primary-soft); font-size: 11px; font-weight: 800; }
 .role-badge.viewer { color: #60718b; background: #eef2f7; }
