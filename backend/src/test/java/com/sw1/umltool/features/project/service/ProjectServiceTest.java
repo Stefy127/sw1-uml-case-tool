@@ -9,6 +9,7 @@ import com.sw1.umltool.features.project.dto.UpdateProjectRequest;
 import com.sw1.umltool.features.project.exception.ProjectForbiddenException;
 import com.sw1.umltool.features.project.exception.ProjectNotFoundException;
 import com.sw1.umltool.features.diagram.repository.DiagramRepository;
+import com.sw1.umltool.features.diagram.model.persistence.DiagramEntity;
 import com.sw1.umltool.features.auth.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -127,6 +128,55 @@ class ProjectServiceTest {
         org.mockito.Mockito.doThrow(new ProjectForbiddenException()).when(access).requireOwner("project-1", "editor-1");
         assertThrows(ProjectForbiddenException.class, () -> service.deleteProject("project-1", "editor-1"));
         org.mockito.Mockito.verifyNoInteractions(diagramRepository);
+    }
+
+    @Test
+    void ownerDuplicatesProjectAndDiagramsWithoutSharing() {
+        ProjectEntity original = project();
+        original.setShareToken("original-token");
+        when(projectRepository.findById("project-1")).thenReturn(java.util.Optional.of(original));
+        DiagramEntity diagram = DiagramEntity.builder()
+                .id("diagram-1").projectId("project-1").name("Modelo")
+                .version(4).canonicalModelJson("{\"id\":\"class-1\"}")
+                .viewStateJson("{\"diagramId\":\"diagram-1\"}")
+                .build();
+        when(diagramRepository.findByProjectId("project-1")).thenReturn(java.util.List.of(diagram));
+
+        ProjectEntity copy = service.duplicateProject("project-1", "owner-1");
+
+        assertEquals("CRM - Copia", copy.getName());
+        assertEquals("Description", copy.getDescription());
+        assertEquals("owner-1", copy.getOwnerUserId());
+        assertFalse("project-1".equals(copy.getId()));
+        assertEquals(com.sw1.umltool.features.project.model.ProjectShareMode.RESTRICTED, copy.getShareMode());
+        assertEquals(null, copy.getShareToken());
+        verify(projectMemberRepository).save(org.mockito.ArgumentMatchers.argThat(member ->
+                copy.getId().equals(member.getProjectId())
+                        && "owner-1".equals(member.getUserId())
+                        && ProjectMemberRole.OWNER.equals(member.getRole())));
+        verify(diagramRepository).save(org.mockito.ArgumentMatchers.argThat(clone ->
+                !"diagram-1".equals(clone.getId())
+                        && copy.getId().equals(clone.getProjectId())
+                        && "Modelo".equals(clone.getName())
+                        && clone.getVersion() == 4
+                        && diagram.getCanonicalModelJson().equals(clone.getCanonicalModelJson())
+                        && diagram.getViewStateJson().equals(clone.getViewStateJson())));
+    }
+
+    @Test
+    void editorCannotDuplicateProject() {
+        ProjectEntity original = project();
+        when(projectRepository.findById("project-1")).thenReturn(java.util.Optional.of(original));
+        org.mockito.Mockito.doThrow(new ProjectForbiddenException()).when(access).requireOwner("project-1", "editor-1");
+
+        assertThrows(ProjectForbiddenException.class, () -> service.duplicateProject("project-1", "editor-1"));
+        org.mockito.Mockito.verifyNoInteractions(diagramRepository);
+    }
+
+    @Test
+    void duplicatingMissingProjectReturnsNotFound() {
+        when(projectRepository.findById("missing")).thenReturn(java.util.Optional.empty());
+        assertThrows(ProjectNotFoundException.class, () -> service.duplicateProject("missing", "owner-1"));
     }
 
     private ProjectEntity project() {

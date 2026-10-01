@@ -37,6 +37,8 @@ export class ProjectsPageComponent {
   readonly deletingProject = signal<Project | null>(null);
   readonly deleteLoading = signal(false);
   readonly deleteError = signal('');
+  readonly duplicatingProjectId = signal<string | null>(null);
+  readonly duplicateError = signal('');
   private readonly router = inject(Router);
   readonly filtered = computed(() =>
     this.projects().filter((project) =>
@@ -129,6 +131,7 @@ export class ProjectsPageComponent {
 
   toggleMenu(event: Event, projectId: string): void {
     event.stopPropagation();
+    this.duplicateError.set('');
     if (this.openMenuId() === projectId) {
       this.openMenuId.set(null);
       this.openMenuUp.set(false);
@@ -186,6 +189,25 @@ export class ProjectsPageComponent {
     this.openMenuUp.set(false);
     this.deletingProject.set(project);
     this.deleteError.set('');
+  }
+
+  duplicateProject(event: Event, project: Project): void {
+    event.stopPropagation();
+    if (this.duplicatingProjectId()) return;
+    this.duplicateError.set('');
+    this.openMenuId.set(null);
+    this.openMenuUp.set(false);
+    this.duplicatingProjectId.set(project.id);
+    this.projectService.duplicateProject(project.id).subscribe({
+      next: (duplicated) => {
+        this.projects.update((items) => [duplicated, ...items]);
+        this.duplicatingProjectId.set(null);
+      },
+      error: () => {
+        this.duplicatingProjectId.set(null);
+        this.duplicateError.set('No se pudo duplicar el proyecto.');
+      },
+    });
   }
 
   closeDelete(): void {

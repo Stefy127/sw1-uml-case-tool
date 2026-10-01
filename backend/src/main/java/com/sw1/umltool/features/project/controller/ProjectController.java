@@ -73,6 +73,12 @@ public class ProjectController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{projectId}/duplicate")
+    public ResponseEntity<ProjectResponse> duplicate(@PathVariable String projectId, Authentication auth) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ProjectMapper.toResponse(projectService.duplicateProject(projectId, auth.getName())));
+    }
+
     @GetMapping("/shared") public List<ProjectResponse> shared(Authentication auth) { return projectService.shared(auth.getName()).stream().map(ProjectMapper::toResponse).toList(); }
     @GetMapping("/{projectId}/members") public List<ProjectMemberResponse> members(@PathVariable String projectId, Authentication auth) { return projectService.members(projectId, auth.getName()); }
     @GetMapping("/{projectId}/my-role") public ProjectRoleResponse role(@PathVariable String projectId, Authentication auth) { return projectService.role(projectId, auth.getName()); }

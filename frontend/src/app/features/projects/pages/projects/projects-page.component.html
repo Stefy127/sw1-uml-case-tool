@@ -71,8 +71,9 @@
                 <div class="project-menu" [class.open-up]="openMenuUp()" role="menu" (click)="$event.stopPropagation()">
                   <button type="button" role="menuitem" (click)="openShare($event, project.id)">Compartir</button>
                   <button type="button" role="menuitem" (click)="openEdit($event, project)">Editar proyecto</button>
-                  <button type="button" role="menuitem" disabled title="Próximamente">Duplicar proyecto <span>Próximamente</span></button>
+                  <button type="button" role="menuitem" [disabled]="duplicatingProjectId() === project.id" (click)="duplicateProject($event, project)" [attr.aria-busy]="duplicatingProjectId() === project.id">{{ duplicatingProjectId() === project.id ? 'Duplicando...' : 'Duplicar proyecto' }}</button>
                   <button type="button" role="menuitem" (click)="openDelete($event, project)">Eliminar proyecto</button>
+                  @if (duplicateError()) { <small class="menu-error" role="alert">{{ duplicateError() }}</small> }
                 </div>
               }
             </div>

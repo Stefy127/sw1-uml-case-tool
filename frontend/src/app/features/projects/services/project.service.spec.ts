@@ -47,4 +47,12 @@ describe('ProjectService', () => {
     expect(request.request.method).toBe('DELETE');
     request.flush(null);
   });
+
+  it('duplicates a project', () => {
+    service.duplicateProject('p1').subscribe();
+    const request = http.expectOne(`${API_BASE_URL}/projects/p1/duplicate`);
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({});
+    request.flush({ id: 'copy-1', name: 'Demo - Copia' });
+  });
 });

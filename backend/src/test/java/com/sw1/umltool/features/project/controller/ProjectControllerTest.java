@@ -97,6 +97,20 @@ class ProjectControllerTest {
                 .andExpect(status().isNoContent());
     }
 
+    @Test
+    void duplicateProjectReturnsCreatedCopy() throws Exception {
+        ProjectEntity copy = project();
+        copy.setId("copy-1");
+        copy.setName("CRM - Copia");
+        when(projectService.duplicateProject("project-1", "owner-1")).thenReturn(copy);
+
+        mockMvc.perform(post("/api/projects/project-1/duplicate")
+                        .principal(new UsernamePasswordAuthenticationToken("owner-1", null)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value("copy-1"))
+                .andExpect(jsonPath("$.name").value("CRM - Copia"));
+    }
+
     private ProjectEntity project() {
         return ProjectEntity.builder().id("project-1").name("CRM").ownerUserId("user-1").build();
     }

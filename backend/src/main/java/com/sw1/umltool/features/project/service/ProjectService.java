@@ -24,6 +24,7 @@ import com.sw1.umltool.features.project.dto.SharedProjectResponse;
 import com.sw1.umltool.features.project.dto.UpdateProjectRequest;
 import com.sw1.umltool.features.project.exception.ProjectNotFoundException;
 import com.sw1.umltool.features.diagram.repository.DiagramRepository;
+import com.sw1.umltool.features.diagram.model.persistence.DiagramEntity;
 import com.sw1.umltool.features.project.model.ProjectShareMode;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -71,6 +72,49 @@ public class ProjectService {
         diagramRepository.deleteByProjectId(projectId);
         projectMemberRepository.deleteByProjectId(projectId);
         projectRepository.deleteById(projectId);
+    }
+
+    @Transactional
+    public ProjectEntity duplicateProject(String projectId, String userId) {
+        ProjectEntity original = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ProjectNotFoundException(projectId));
+        access.requireOwner(projectId, userId);
+
+        LocalDateTime now = LocalDateTime.now();
+        String duplicatedProjectId = UUID.randomUUID().toString();
+        ProjectEntity duplicated = ProjectEntity.builder()
+                .id(duplicatedProjectId)
+                .name(original.getName() + " - Copia")
+                .description(original.getDescription())
+                .ownerUserId(userId)
+                .createdAt(now)
+                .updatedAt(now)
+                .shareMode(ProjectShareMode.RESTRICTED)
+                .shareToken(null)
+                .build();
+        ProjectEntity savedProject = projectRepository.save(duplicated);
+
+        projectMemberRepository.save(ProjectMemberEntity.builder()
+                .id(UUID.randomUUID().toString())
+                .projectId(savedProject.getId())
+                .userId(userId)
+                .role(ProjectMemberRole.OWNER)
+                .createdAt(now)
+                .build());
+
+        for (DiagramEntity source : diagramRepository.findByProjectId(projectId)) {
+            diagramRepository.save(DiagramEntity.builder()
+                    .id(UUID.randomUUID().toString())
+                    .projectId(savedProject.getId())
+                    .name(source.getName())
+                    .version(source.getVersion())
+                    .canonicalModelJson(source.getCanonicalModelJson())
+                    .viewStateJson(source.getViewStateJson())
+                    .createdAt(now)
+                    .updatedAt(now)
+                    .build());
+        }
+        return savedProject;
     }
 
     @Transactional
