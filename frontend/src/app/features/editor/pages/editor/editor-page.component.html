@@ -14,6 +14,7 @@
       @if (currentUserRole() === 'OWNER') {
         <button class="btn btn-soft" type="button" (click)="openShare()">♧ Compartir</button>
       }
+      @if (!isReadOnly()) { <button class="btn btn-soft" type="button" (click)="openImageUpdate()">Actualizar desde imagen</button> }
       <app-export-menu [diagramId]="diagramId" />
       <button class="btn btn-primary" type="button" (click)="openGeneratorDialog()">&lt;/&gt; Generar backend</button>
     </div>
@@ -982,6 +983,29 @@
         @if (importError()) { <p class="error-message">{{ importError() }}</p> }
         @if (importConfirming()) { <div class="import-confirmation"><b>Esta importación reemplazará el contenido actual del diagrama.</b><div><button class="btn btn-ghost" type="button" (click)="cancelImportConfirmation()">Cancelar</button><button class="btn btn-primary" type="button" [disabled]="importLoading()" (click)="applyImport()">Importar y reemplazar</button></div></div> }
         @if (!importConfirming()) { <button class="btn btn-ghost import-footer-cancel" type="button" [disabled]="importLoading()" (click)="closeImportDialog()">Cancelar</button> }
+      </section>
+    </div>
+  }
+  @if (imageUpdateOpen()) {
+    <div class="attribute-modal-backdrop import-modal-backdrop" (click)="closeImageUpdate()">
+      <section class="attribute-modal import-modal image-update-modal" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+        <header class="import-modal-header"><span class="import-modal-icon" aria-hidden="true">â†¥</span><div><h2>Actualizar desde imagen</h2><p>Propone cambios sobre el diagrama actual sin reemplazarlo.</p></div><button class="import-modal-close" type="button" aria-label="Cerrar actualización" [disabled]="imageUpdateLoading()" (click)="closeImageUpdate()">&times;</button></header>
+        <label class="image-update-dropzone" [class.has-file]="imageUpdateFile()" [class.disabled]="imageUpdateLoading()">
+          <input #imageUpdateInput type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" (change)="selectImageUpdateFileFromInput(imageUpdateInput)" [disabled]="imageUpdateLoading()" />
+          @if (imageUpdateFile(); as file) { <span class="image-update-file-icon" aria-hidden="true">▧</span><strong>{{ file.name }}</strong><small>{{ (file.size / 1024 / 1024) | number:'1.2-2' }} MB · Imagen UML</small><span class="btn btn-ghost image-update-change">Cambiar imagen</span> } @else { <span class="image-update-upload-icon" aria-hidden="true">↑</span><strong>Selecciona una imagen UML</strong><small>PNG, JPG, JPEG o WEBP · hasta 10 MB</small><span class="btn btn-soft">Seleccionar archivo</span> }
+        </label>
+        <label class="image-update-instruction" for="image-update-instruction"><span>Indica qué quieres actualizar <em>(opcional)</em></span><textarea id="image-update-instruction" [value]="imageUpdateInstruction()" placeholder="Ej. Agrega el atributo teléfono a Cliente o cambia Pedido por Orden." (input)="imageUpdateInstruction.set($any($event.target).value)"></textarea></label>
+        <label class="checkbox-row image-update-complete" for="image-update-complete"><input id="image-update-complete" type="checkbox" [checked]="imageUpdateAllowDestructive()" (change)="imageUpdateAllowDestructive.set($any($event.target).checked)" /><span><strong>La imagen representa el estado final completo</strong><small>Permite proponer eliminaciones; podrás revisarlas antes de aplicar.</small></span></label>
+        @if (!imageUpdatePreview()) { <button class="btn btn-primary image-update-analyze" type="button" [disabled]="!imageUpdateFile() || imageUpdateLoading()" (click)="analyzeImageUpdate()">{{ imageUpdateLoading() ? 'Analizando cambios...' : 'Analizar cambios' }}</button> }
+        @if (imageUpdatePreview(); as update) {
+          @if (imageUpdateHasChanges()) { <div class="image-update-preview-heading"><h3>Cambios detectados</h3>@if (update.confidence !== undefined && update.confidence !== null) { <span class="image-update-confidence">Confianza global {{ (update.confidence * 100) | number:'1.0-0' }}%</span> }</div> } @else { <h3>Sin cambios detectados</h3><p class="image-update-empty">No se detectaron cambios entre la imagen y el diagrama actual.</p> }
+          @for (proposal of update.operations; track proposal.proposalId) {
+            <label class="image-update-proposal" [class.image-update-destructive-card]="proposal.destructive"><input type="checkbox" [checked]="imageUpdateSelected()[proposal.proposalId]" [disabled]="proposal.destructive && !imageUpdateAllowDestructive()" [attr.aria-label]="'Seleccionar ' + imageUpdateOperationLabel(proposal)" (change)="toggleImageUpdateProposal(proposal.proposalId)" /><span class="image-update-operation-symbol" aria-hidden="true">{{ proposal.destructive ? '!' : '+' }}</span><span class="image-update-operation-copy"><strong>{{ imageUpdateOperationLabel(proposal) }}</strong><span>{{ imageUpdateOperationDetail(proposal) }}</span>@if (proposal.summary) { <small>{{ proposal.summary }}</small> }@if (proposal.destructive) { <small class="image-update-destructive">Destructivo</small> }@if (proposal.warnings?.length) { <small class="image-update-proposal-warning">{{ proposal.warnings?.join(' ') }}</small> }</span>@if (proposal.confidence !== undefined && proposal.confidence !== null) { <small class="image-update-proposal-confidence">{{ proposal.confidence * 100 | number:'1.0-0' }}%</small> }</label>
+          }
+          @if (update.warnings.length) { <p class="warning-message">{{ update.warnings.join(' ') }}</p> }
+          <div class="attribute-actions image-update-footer"><button class="btn btn-ghost" type="button" [disabled]="imageUpdateLoading()" (click)="closeImageUpdate()">Cancelar</button>@if (imageUpdateHasChanges()) { <button class="btn btn-primary" type="button" [disabled]="imageUpdateLoading() || imageUpdateSelectedCount() === 0" (click)="applyImageUpdate()">{{ imageUpdateApplyLabel() }}</button> }</div>
+        }
+        @if (imageUpdateError()) { <p class="error-message">{{ imageUpdateError() }}</p> }
       </section>
     </div>
   }

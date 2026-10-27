@@ -11,6 +11,7 @@ import { normalizeClassName } from '../../utils/class-name.util';
 import { DiagramService } from '../../services/diagram.service';
 import { XmiImportService } from '../../services/xmi-import.service';
 import { ImageImportService } from '../../services/image-import.service';
+import { ImageUpdateService } from '../../services/image-update.service';
 import { EditorPageComponent } from './editor-page.component';
 import { ProjectService } from '../../../projects/services/project.service';
 
@@ -25,7 +26,7 @@ const detail: DiagramDetail = {
   viewState: { diagramId: 'd1', nodes: [], relations: [] },
 };
 
-function configure(operationService: object, current = detail, xmiImport: object = {}, imageImport: object = {}, projectApi: object = { getMyRole: () => of({ role: 'OWNER' }), getMembers: () => of([]) }, aiVoice: object = { interpret: () => NEVER }): Promise<void> {
+function configure(operationService: object, current = detail, xmiImport: object = {}, imageImport: object = {}, projectApi: object = { getMyRole: () => of({ role: 'OWNER' }), getMembers: () => of([]) }, aiVoice: object = { interpret: () => NEVER }, imageUpdate: object = { preview: () => NEVER, apply: () => NEVER }): Promise<void> {
   return TestBed.configureTestingModule({
     imports: [EditorPageComponent],
     providers: [
@@ -33,6 +34,7 @@ function configure(operationService: object, current = detail, xmiImport: object
       { provide: DiagramOperationService, useValue: operationService },
       { provide: XmiImportService, useValue: { preview: () => NEVER, apply: () => NEVER, ...xmiImport } },
       { provide: ImageImportService, useValue: { preview: () => NEVER, apply: () => NEVER, ...imageImport } },
+      { provide: ImageUpdateService, useValue: imageUpdate },
       { provide: AiVoiceCommandService, useValue: aiVoice },
       { provide: ProjectService, useValue: projectApi },
       provideRouter([]),
@@ -42,6 +44,46 @@ function configure(operationService: object, current = detail, xmiImport: object
 }
 
 describe('EditorPageComponent', () => {
+  it('does not apply an image preview with no operations', async () => {
+    let applied = false;
+    await configure({ execute: () => NEVER }, detail, {}, {}, undefined, undefined, { preview: () => NEVER, apply: () => { applied = true; return NEVER; } });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.imageUpdatePreview.set({ success: true, diagramId: 'd1', baseVersion: 7, operations: [], warnings: [] });
+
+    expect(page.imageUpdateHasChanges()).toBe(false);
+    expect(page.imageUpdateSelectedCount()).toBe(0);
+    page.applyImageUpdate();
+    expect(applied).toBe(false);
+  });
+
+  it('counts selected image operations and keeps destructive proposals unselected by default', async () => {
+    await configure({ execute: () => NEVER });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.imageUpdatePreview.set({ success: true, diagramId: 'd1', baseVersion: 7, operations: [
+      { proposalId: 'p1', type: 'ADD_ATTRIBUTE', destructive: false },
+      { proposalId: 'p2', type: 'REMOVE_ATTRIBUTE', destructive: true },
+    ], warnings: [] });
+    page.imageUpdateSelected.set({ p1: true, p2: false });
+
+    expect(page.imageUpdateHasChanges()).toBe(true);
+    expect(page.imageUpdateSelectedCount()).toBe(1);
+  });
+
+  it('formats image update operations with semantic details and correct pluralization', async () => {
+    await configure({ execute: () => NEVER });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.imageUpdatePreview.set({ success: true, diagramId: 'd1', baseVersion: 7, confidence: 1, operations: [
+      { proposalId: 'p1', type: 'ADD_ATTRIBUTE', className: 'Pedido', attributeName: 'Nombre', attributeType: 'String' },
+    ], warnings: [] });
+    page.imageUpdateSelected.set({ p1: true });
+
+    expect(page.imageUpdateOperationLabel({ type: 'ADD_ATTRIBUTE' })).toBe('Agregar atributo');
+    expect(page.imageUpdateOperationDetail(page.imageUpdatePreview()!.operations[0])).toBe('Pedido · Nombre · String');
+    expect(page.imageUpdateApplyLabel()).toBe('Aplicar 1 cambio');
+    page.imageUpdateSelected.set({});
+    expect(page.imageUpdateApplyLabel()).toBe('Aplicar 0 cambios');
+  });
+
   it.each([
     [{ lower: '1', upper: '1' }, '1..1'],
     [{ lower: '0', upper: '1' }, '0..1'],

@@ -25,6 +25,9 @@ import com.sw1.umltool.features.project.dto.UpdateProjectRequest;
 import com.sw1.umltool.features.project.exception.ProjectNotFoundException;
 import com.sw1.umltool.features.diagram.repository.DiagramRepository;
 import com.sw1.umltool.features.diagram.model.persistence.DiagramEntity;
+import com.sw1.umltool.features.diagram.model.canonical.UmlDiagram;
+import com.sw1.umltool.features.diagram.model.view.DiagramViewState;
+import com.sw1.umltool.features.diagram.service.DiagramStateSerializer;
 import com.sw1.umltool.features.project.model.ProjectShareMode;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +40,7 @@ public class ProjectService {
     private final UserRepository userRepository;
     private final ProjectAccessService access;
     private final DiagramRepository diagramRepository;
+    private final DiagramStateSerializer diagramStateSerializer;
 
     public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository projectMemberRepository) {
         this.projectRepository = projectRepository;
@@ -44,10 +48,11 @@ public class ProjectService {
         this.userRepository = null;
         this.access = null;
         this.diagramRepository = null;
+        this.diagramStateSerializer = null;
     }
 
     @Autowired
-    public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository members, UserRepository users, ProjectAccessService access, DiagramRepository diagramRepository) { this.projectRepository=projectRepository; this.projectMemberRepository=members; this.userRepository=users; this.access=access; this.diagramRepository=diagramRepository; }
+    public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository members, UserRepository users, ProjectAccessService access, DiagramRepository diagramRepository, DiagramStateSerializer diagramStateSerializer) { this.projectRepository=projectRepository; this.projectMemberRepository=members; this.userRepository=users; this.access=access; this.diagramRepository=diagramRepository; this.diagramStateSerializer=diagramStateSerializer; }
 
     @Transactional
     public ProjectEntity updateProject(String projectId, String userId, UpdateProjectRequest request) {
@@ -103,13 +108,18 @@ public class ProjectService {
                 .build());
 
         for (DiagramEntity source : diagramRepository.findByProjectId(projectId)) {
+            String duplicatedDiagramId = UUID.randomUUID().toString();
+            UmlDiagram canonicalModel = diagramStateSerializer.deserializeCanonical(source.getCanonicalModelJson());
+            canonicalModel.setId(duplicatedDiagramId);
+            DiagramViewState viewState = diagramStateSerializer.deserializeViewState(source.getViewStateJson());
+            viewState.setDiagramId(duplicatedDiagramId);
             diagramRepository.save(DiagramEntity.builder()
-                    .id(UUID.randomUUID().toString())
+                    .id(duplicatedDiagramId)
                     .projectId(savedProject.getId())
                     .name(source.getName())
                     .version(source.getVersion())
-                    .canonicalModelJson(source.getCanonicalModelJson())
-                    .viewStateJson(source.getViewStateJson())
+                    .canonicalModelJson(diagramStateSerializer.serializeCanonical(canonicalModel))
+                    .viewStateJson(diagramStateSerializer.serializeViewState(viewState))
                     .createdAt(now)
                     .updatedAt(now)
                     .build());

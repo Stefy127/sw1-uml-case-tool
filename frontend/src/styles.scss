@@ -539,3 +539,37 @@ h3 {
 .inline-member-select { flex: 0 0 32px; padding: 2px; }
 .inline-name { width: 100%; min-width: 0; padding: 2px 5px; border: 1px solid var(--color-primary); border-radius: 5px; outline: 0; color: var(--color-text); background: var(--color-surface); font: inherit; font-weight: 700; }
 .inline-edit-trigger { cursor: text; }
+
+/* Image update dialog: global because the editor component keeps its stylesheet under the build budget. */
+.image-update-backdrop { z-index: 1100; }
+.image-update-modal { width: min(740px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; padding: 26px; }
+.image-update-dropzone { display: grid; place-items: center; gap: 8px; min-height: 150px; border: 1.5px dashed #cfc5f6; border-radius: 16px; padding: 20px; background: #faf9ff; text-align: center; cursor: pointer; }
+.image-update-dropzone:hover, .image-update-dropzone:focus-within { border-color: var(--color-primary); background: #f5f1ff; }
+.image-update-dropzone.has-file { min-height: 110px; border-style: solid; background: var(--color-surface-alt); }
+.image-update-dropzone input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.image-update-upload-icon, .image-update-file-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; color: var(--color-primary); background: var(--color-primary-soft); font-size: 25px; font-weight: 700; }
+.image-update-dropzone small, .image-update-complete small { color: var(--color-text-muted); }
+.image-update-instruction { display: grid; gap: 6px; margin-top: 16px; font-size: 13px; font-weight: 700; }
+.image-update-instruction span { color: var(--color-text-muted); font-weight: 400; }
+.image-update-instruction textarea { min-height: 70px; border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; font: inherit; resize: vertical; }
+.image-update-complete { align-items: flex-start; margin: 14px 0; padding: 10px; border-radius: 10px; background: #fffaf0; }
+.image-update-complete span, .image-update-operation-copy { display: grid; gap: 3px; }
+.image-update-analyze { width: 100%; }
+.image-update-empty { margin: 16px 0; border-radius: 12px; padding: 18px; color: var(--color-text-muted); background: var(--color-surface-alt); text-align: center; }
+.image-update-operations { display: grid; gap: 8px; max-height: 330px; overflow: auto; }
+.image-update-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.image-update-confidence { color: var(--color-primary); font-weight: 700; white-space: nowrap; }
+.image-update-proposal { display: flex; align-items: center; gap: 10px; min-height: 50px; border: 1px solid var(--color-border); border-radius: 12px; padding: 8px 10px; background: var(--color-surface); cursor: pointer; }
+.image-update-proposal:hover { border-color: #cfc5f6; background: #faf9ff; }
+.image-update-proposal:has(input:focus-visible), .image-update-dropzone:focus-within { outline: 3px solid color-mix(in srgb, var(--color-primary-soft) 80%, transparent); outline-offset: 2px; }
+.image-update-proposal input { flex: 0 0 auto; width: 18px; height: 18px; margin: 0; }
+.image-update-proposal.image-update-destructive-card { border-color: #e7c9c9; background: #fffafa; }
+.image-update-operation-symbol { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border-radius: 9px; color: var(--color-primary); background: var(--color-primary-soft); font-weight: 800; }
+.image-update-operation-copy { flex: 1; }
+.image-update-operation-copy > span { color: var(--color-text); line-height: 1.35; overflow-wrap: anywhere; }
+.image-update-operation-copy small, .image-update-proposal em { color: var(--color-text-muted); font-size: 11px; font-style: normal; }
+.image-update-destructive { color: #a04444 !important; font-weight: 700; }
+.image-update-proposal-warning { color: #8a681b !important; }
+.image-update-proposal-confidence { flex: 0 0 auto; color: var(--color-text-muted); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.image-update-footer { justify-content: space-between; margin-top: 18px; }
+@media (max-width: 600px) { .image-update-modal { width: calc(100vw - 20px); max-height: calc(100vh - 20px); padding: 18px; } .image-update-preview-heading { align-items: flex-start; flex-direction: column; gap: 4px; } .image-update-proposal { align-items: flex-start; } .image-update-proposal-confidence { margin-left: auto; } .image-update-footer { flex-direction: column-reverse; } .image-update-footer button { width: 100%; } }

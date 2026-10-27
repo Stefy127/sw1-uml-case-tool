@@ -209,6 +209,166 @@
     }
   },
   {
+    "name":  "SW1 UML Image Update",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "httpMethod":  "POST",
+                                         "path":  "uml-image-update-interpret",
+                                         "responseMode":  "responseNode",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.webhook",
+                      "typeVersion":  2.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "cf665360-75a1-4aa7-84d3-5b2da8605e1e",
+                      "name":  "Webhook",
+                      "webhookId":  "sw1-update-webhook"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const body = $json.body ?? $json;\nif (!body.fileName || !body.contentType || !body.imageBase64 || body.diagramContext == null) throw new Error(\u0027Faltan datos para actualizar el diagrama\u0027);\nreturn [{ json: body, binary: { diagramImage: { data: Buffer.from(body.imageBase64, \u0027base64\u0027).toString(\u0027base64\u0027), mimeType: body.contentType, fileName: body.fileName } } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       224,
+                                       0
+                                   ],
+                      "id":  "0adbc461-1607-469a-b663-5cb1408892ab",
+                      "name":  "Validate Update Request"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "image",
+                                         "operation":  "analyze",
+                                         "modelId":  {
+                                                         "__rl":  true,
+                                                         "value":  "models/gemini-flash-lite-latest",
+                                                         "mode":  "list",
+                                                         "cachedResultName":  "models/gemini-flash-lite-latest"
+                                                     },
+                                         "text":  "={{ `Analiza la imagen UML y comparala cuidadosamente con el contexto UML actual.` + \"`n`nCONTEXTO UML ACTUAL:`n\" + JSON.stringify($json.diagramContext ?? $json.body?.diagramContext ?? {}, null, 2) + \"`n`nINSTRUCCION ADICIONAL:`n\" + ($json.instruction ?? $json.body?.instruction ?? \"(sin instruccion adicional)\") + \"`n`nPERMITIR CAMBIOS DESTRUCTIVOS:`n\" + ($json.allowDestructiveChanges ?? $json.body?.allowDestructiveChanges ?? false) + \"`n`nREGLAS:`nAnaliza visualmente clases, atributos, metodos, parametros, relaciones, multiplicidades y associationClassLinks.`nCompara la imagen con diagramContext y propone unicamente diferencias reales.`nUsa ADD_ATTRIBUTE, CREATE_CLASS, ADD_METHOD o CREATE_RELATION para elementos nuevos.`nUsa renombres o eliminaciones solo con instruccion explicita y respeta allowDestructiveChanges.`nNo inventes IDs ni elementos. No devuelvas codigo, canonicalModel ni operaciones READ.`nCompara nombres ignorando mayusculas, espacios y diacriticos usando normalizacion NFD, pero devuelve los nombres originales del contexto.`nMarca DELETE_CLASS, REMOVE_ATTRIBUTE, REMOVE_METHOD y REMOVE_RELATION como destructivas.`n`nOPERACIONES PERMITIDAS:`nCREATE_CLASS, DELETE_CLASS, RENAME_CLASS, ADD_ATTRIBUTE, RENAME_ATTRIBUTE, CHANGE_ATTRIBUTE_TYPE, REMOVE_ATTRIBUTE, ADD_METHOD, RENAME_METHOD, REMOVE_METHOD, CREATE_RELATION, REMOVE_RELATION, CHANGE_RELATION_TYPE.`n`nEJEMPLO:`nContexto: Pedido - ID: Long`nImagen: Pedido - ID: Long - Nombre: String`nResultado: ADD_ATTRIBUTE con className Pedido, attributeName Nombre y attributeType String.`n`nDevuelve exclusivamente JSON valido con success, operations, warnings y confidence. Si no hay diferencias reales, operations debe ser [].`n` }}",
+                                         "inputType":  "binary",
+                                         "binaryPropertyName":  "diagramImage",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.googleGemini",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       448,
+                                       0
+                                   ],
+                      "id":  "be2229a9-bfb1-4402-b58f-3fc211d5e25f",
+                      "name":  "Analyze an image",
+                      "credentials":  {
+                                          "googlePalmApi":  {
+                                                                "id":  "h9ySV4TIlwf8PvrY",
+                                                                "name":  "Google Gemini(PaLM) Api account 2"
+                                                            }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const raw = $json?.content?.parts?.[0]?.text ?? $json?.text ?? \u0027\u0027;\nlet parsed;\ntry { parsed = JSON.parse(raw.replace(/^```json\\s*/i, \u0027\u0027).replace(/```$/, \u0027\u0027).trim()); } catch (e) { throw new Error(\u0027Gemini response is not valid JSON\u0027); }\nconst allowed = new Set([\u0027CREATE_CLASS\u0027,\u0027DELETE_CLASS\u0027,\u0027RENAME_CLASS\u0027,\u0027ADD_ATTRIBUTE\u0027,\u0027RENAME_ATTRIBUTE\u0027,\u0027CHANGE_ATTRIBUTE_TYPE\u0027,\u0027REMOVE_ATTRIBUTE\u0027,\u0027ADD_METHOD\u0027,\u0027RENAME_METHOD\u0027,\u0027REMOVE_METHOD\u0027,\u0027CREATE_RELATION\u0027,\u0027REMOVE_RELATION\u0027,\u0027CHANGE_RELATION_TYPE\u0027]);\nconst operations = Array.isArray(parsed.operations) ? parsed.operations.filter(item =\u003e allowed.has(item.type)).map(item =\u003e ({ ...item, destructive: Boolean(item.destructive) || [\u0027DELETE_CLASS\u0027,\u0027REMOVE_ATTRIBUTE\u0027,\u0027REMOVE_METHOD\u0027,\u0027REMOVE_RELATION\u0027].includes(item.type) })) : [];\nreturn [{ json: { success: parsed.success !== false, operations, warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [], confidence: Math.max(0, Math.min(1, Number(parsed.confidence ?? 0))) } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       672,
+                                       0
+                                   ],
+                      "id":  "2ece1cc3-2dce-4429-84d2-cc94dcf34d20",
+                      "name":  "Normalize Update Response"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.respondToWebhook",
+                      "typeVersion":  1.5,
+                      "position":  [
+                                       896,
+                                       0
+                                   ],
+                      "id":  "a20ffa5c-1a7c-4ed9-911a-bb0c3a973f0b",
+                      "name":  "Respond to Webhook"
+                  }
+              ],
+    "pinData":  {
+
+                },
+    "connections":  {
+                        "Webhook":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "node":  "Validate Update Request",
+                                                             "type":  "main",
+                                                             "index":  0
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Validate Update Request":  {
+                                                        "main":  [
+                                                                     [
+                                                                         {
+                                                                             "node":  "Analyze an image",
+                                                                             "type":  "main",
+                                                                             "index":  0
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                    },
+                        "Analyze an image":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Normalize Update Response",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Normalize Update Response":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "node":  "Respond to Webhook",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      }
+                    },
+    "active":  true,
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "binaryMode":  "separate"
+                 },
+    "versionId":  "46ebfa4b-a29c-409e-9f84-6fdb2063d020",
+    "nodeGroups":  [
+
+                   ],
+    "id":  "SW1-UML-IMAGE-UPDATE",
+    "tags":  [
+
+             ]
+}
+,
+  {
     "updatedAt": "2026-09-06T03:55:12.114Z",
     "createdAt": "2026-09-06T02:54:47.771Z",
     "id": "BSaTIFaMyipB6yEV",
