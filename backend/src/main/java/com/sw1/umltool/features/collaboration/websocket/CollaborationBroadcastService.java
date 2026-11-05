@@ -27,6 +27,7 @@ public class CollaborationBroadcastService {
     private final ProjectAccessService access;
     private final UserRepository users;
     private final Map<String, Set<WebSocketSession>> sessions = new ConcurrentHashMap<>();
+    private final Map<String, Set<WebSocketSession>> projectSessions = new ConcurrentHashMap<>();
     private final Map<String, WebSocketSession> safeSessions = new ConcurrentHashMap<>();
     private static final int SEND_TIME_LIMIT_MILLIS = 10_000;
     private static final int BUFFER_SIZE_LIMIT_BYTES = 512 * 1024;
@@ -40,20 +41,37 @@ public class CollaborationBroadcastService {
         sessions.computeIfAbsent(diagramId, ignored -> ConcurrentHashMap.newKeySet()).add(safe);
     }
 
+    public void addProject(String projectId, WebSocketSession session) {
+        WebSocketSession safe = safeSessions.computeIfAbsent(session.getId(), ignored ->
+                new ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MILLIS, BUFFER_SIZE_LIMIT_BYTES));
+        projectSessions.computeIfAbsent(projectId, ignored -> ConcurrentHashMap.newKeySet()).add(safe);
+    }
+
+    public void removeProject(String projectId, WebSocketSession session) {
+        Set<WebSocketSession> current = projectSessions.get(projectId);
+        if (current != null) {
+            current.removeIf(candidate -> candidate.getId().equals(session.getId()));
+            if (current.isEmpty()) projectSessions.remove(projectId, current);
+        }
+    }
+
     public void remove(String diagramId, WebSocketSession session) {
         Set<WebSocketSession> current = sessions.get(diagramId);
         if (current != null) {
             current.removeIf(candidate -> candidate.getId().equals(session.getId()));
             if (current.isEmpty()) sessions.remove(diagramId, current);
         }
-        safeSessions.remove(session.getId());
+        cleanupSafeSession(session);
     }
 
     public void removeEverywhere(WebSocketSession session) {
         sessions.forEach((diagramId, current) -> remove(diagramId, session));
+        projectSessions.forEach((projectId, current) -> removeProject(projectId, session));
+        cleanupSafeSession(session);
     }
 
     public Set<WebSocketSession> sessions(String diagramId) { return sessions.getOrDefault(diagramId, Set.of()); }
+    public Set<WebSocketSession> projectSessions(String projectId) { return projectSessions.getOrDefault(projectId, Set.of()); }
     public boolean send(WebSocketSession session, Object value) {
         if (session == null) return false;
         WebSocketSession safe = safeSessions.getOrDefault(session.getId(), session);
@@ -87,6 +105,31 @@ public class CollaborationBroadcastService {
         }
         Map<String, Object> message = Map.of("type", "PRESENCE", "diagramId", diagramId, "users", unique.values());
         for (WebSocketSession session : sessions(diagramId)) send(session, message);
+    }
+
+    public void broadcastProjectMessage(String projectId, Object message) {
+        Set<String> authorizedUsers = access.memberUserIds(projectId);
+        for (WebSocketSession session : projectSessions(projectId)) {
+            String userId = String.valueOf(session.getAttributes().get("userId"));
+            if (!authorizedUsers.contains(userId)) {
+                removeProject(projectId, session);
+                continue;
+            }
+            send(session, message);
+        }
+    }
+
+    public void broadcastPrivateMessage(String projectId, String userId, Object message) {
+        if (userId == null) return;
+        for (WebSocketSession session : projectSessions(projectId)) {
+            if (userId.equals(String.valueOf(session.getAttributes().get("userId")))) send(session, message);
+        }
+    }
+
+    private void cleanupSafeSession(WebSocketSession session) {
+        boolean stillRegistered = sessions.values().stream().anyMatch(values -> values.stream().anyMatch(value -> value.getId().equals(session.getId())))
+                || projectSessions.values().stream().anyMatch(values -> values.stream().anyMatch(value -> value.getId().equals(session.getId())));
+        if (!stillRegistered) safeSessions.remove(session.getId());
     }
 
     private void logSendFailure(WebSocketSession session, String diagramId, Object message, Exception error) {

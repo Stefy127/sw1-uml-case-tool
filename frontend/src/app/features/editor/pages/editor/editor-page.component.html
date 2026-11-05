@@ -1,5 +1,5 @@
-<div class="editor" (keydown)="onEditorKeydown($event)" (keyup)="onEditorKeyup($event)" tabindex="0">
-  <header class="editor-head">
+<div class="editor" (click)="closeMoreActions()" (keydown)="onEditorKeydown($event)" (keyup)="onEditorKeyup($event)" tabindex="0">
+  <header class="editor-head" (click)="closeMoreActions()">
     <a routerLink="/projects" class="editor-brand"
       >← <span class="brand-mark">S</span><b>SW1</b> UML ›</a
     >
@@ -7,21 +7,28 @@
       <b>{{ loading() ? 'Cargando...' : (diagram()?.name ?? 'Diagrama') }}</b>
       <span>{{ error() || 'Guardado · versión ' + (diagram()?.version ?? '—') }}</span>
     </div>
-    <div class="editor-actions">
+    <div class="editor-mobile-controls" aria-label="Paneles del editor"><button type="button" title="Mostrar herramientas" aria-label="Mostrar herramientas UML" [attr.aria-expanded]="toolbarOpen()" (click)="toggleToolbar()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg></button><button type="button" title="Mostrar inspector" aria-label="Mostrar inspector" [attr.aria-expanded]="inspectorOpen()" (click)="toggleInspector()"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 4v16" /></svg></button></div>
+    <div class="editor-actions" (click)="$event.stopPropagation()">
       @if (isReadOnly()) { <span class="read-only-badge">Solo lectura</span> }
       @for (member of projectMembers().slice(0, 3); track member.id) { <span class="avatar rose real-collaborator" [title]="member.firstName + ' ' + member.lastName">{{ member.firstName[0] }}{{ member.lastName[0] }}</span> }
       @for (member of collaboration?.onlineUsers?.() ?? []; track member.userId) { <span class="avatar rose online-collaborator" [title]="member.firstName + ' ' + member.lastName">{{ member.firstName[0] }}{{ member.lastName[0] }}</span> }
       @if (currentUserRole() === 'OWNER') {
-        <button class="btn btn-soft" type="button" (click)="openShare()">♧ Compartir</button>
+        <button class="btn btn-soft editor-action-button" type="button" title="Compartir proyecto" aria-label="Compartir proyecto" (click)="openShare()"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 11a3 3 0 1 0 0-6M15.5 14a5.5 5.5 0 0 1 5 5" /></svg><span class="action-label">Compartir</span></button>
       }
-      @if (!isReadOnly()) { <button class="btn btn-soft" type="button" (click)="openImageUpdate()">Actualizar desde imagen</button> }
+      @if (!isReadOnly()) {
+        <div class="more-actions" (click)="$event.stopPropagation()">
+          <button class="btn btn-soft editor-action-button more-actions-trigger" type="button" title="Más acciones" aria-label="Más acciones" aria-haspopup="menu" [attr.aria-expanded]="moreActionsOpen()" (click)="toggleMoreActions($event)"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="19" cy="12" r="1.2" /></svg><span class="action-label">Más acciones</span></button>
+          @if (moreActionsOpen()) { <div class="more-actions-menu" role="menu" aria-label="Más acciones"><button type="button" role="menuitem" (click)="openImageUpdate()"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 4.5-4.5 3 3 2.5-2.5 6 6" /></svg><span>Actualizar desde imagen</span></button></div> }
+        </div>
+      }
+      <button class="btn btn-soft editor-action-button" type="button" title="Abrir chat del proyecto" aria-label="Abrir chat del proyecto" (click)="openChat()"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-8 7.5 8.3 8.3 0 0 1-3-.6L4 20l1.4-3.5A7.2 7.2 0 0 1 4 11.5 7.5 7.5 0 0 1 12 4a7.5 7.5 0 0 1 8 7.5Z" /></svg><span class="action-label">Chat</span></button>
       <app-export-menu [diagramId]="diagramId" />
-      <button class="btn btn-primary" type="button" (click)="openGeneratorDialog()">&lt;/&gt; Generar backend</button>
+      <button class="btn btn-primary editor-action-button editor-generator-button" type="button" title="Generar backend" aria-label="Generar backend" (click)="openGeneratorDialog()"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 5l-4 14" /></svg><span class="action-label">Generar backend</span></button>
     </div>
   </header>
 
   <div class="editor-body">
-    <aside class="toolbar" (click)="handleToolbarClick($event)">
+    <aside class="toolbar" [class.toolbar-open]="toolbarOpen()" (click)="handleToolbarClick($event)">
       @for (tool of tools; track $index) {
         <button
           [disabled]="isReadOnly() && $index !== 0"
@@ -239,7 +246,7 @@
       </div>
     </main>
 
-    <aside class="inspector">
+    <aside class="inspector" [class.inspector-open]="inspectorOpen()">
       <div class="tabs">
         @for (tabName of ['Propiedades', 'IA', 'Historial']; track tabName) {
           <button [class.active]="tab === tabName" (click)="tab = tabName">
@@ -1032,3 +1039,6 @@
   (close)="shareOpen.set(false)"
   (membersChanged)="projectMembers.set($event)"
 ></app-share-project-modal>
+@if (chatOpen() && diagram()?.projectId; as projectId) {
+  <app-project-chat [projectId]="projectId" [canManageMemory]="currentUserRole() !== 'VIEWER'" (close)="chatOpen.set(false)"></app-project-chat>
+}

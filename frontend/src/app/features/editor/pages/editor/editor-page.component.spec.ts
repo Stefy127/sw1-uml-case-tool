@@ -360,6 +360,64 @@ describe('EditorPageComponent', () => {
     expect(fixture.componentInstance.shareOpen()).toBe(false);
   });
 
+  it('opens and closes the compact more-actions menu with Escape', async () => {
+    await configure({ execute: () => NEVER }, detail, {}, {}, {
+      getMyRole: () => of({ role: 'OWNER' }),
+      getMembers: () => of([]),
+    });
+    const fixture = TestBed.createComponent(EditorPageComponent);
+    await fixture.whenStable();
+    const page = fixture.componentInstance;
+
+    page.toggleMoreActions();
+    fixture.detectChanges();
+    expect(page.moreActionsOpen()).toBe(true);
+    expect(fixture.nativeElement.querySelector('.more-actions-menu')).not.toBeNull();
+
+    page.onEditorKeydown(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(page.moreActionsOpen()).toBe(false);
+  });
+
+  it('opens the project chat without affecting the existing share state', async () => {
+    await configure({ execute: () => NEVER }, detail, {}, {}, {
+      getMyRole: () => of({ role: 'OWNER' }),
+      getMembers: () => of([]),
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.openChat();
+
+    expect(page.chatOpen()).toBe(true);
+    expect(page.shareOpen()).toBe(false);
+  });
+
+  it('toggles the responsive tool and inspector panels', async () => {
+    await configure({ execute: () => NEVER }, detail);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    expect(page.toolbarOpen()).toBe(false);
+    expect(page.inspectorOpen()).toBe(false);
+    page.toggleToolbar();
+    page.toggleInspector();
+    expect(page.toolbarOpen()).toBe(true);
+    expect(page.inspectorOpen()).toBe(true);
+  });
+
+  it('renders SVG icons for the editor actions and mobile panel controls', async () => {
+    await configure({ execute: () => NEVER }, detail, {}, {}, {
+      getMyRole: () => of({ role: 'OWNER' }),
+      getMembers: () => of([]),
+    });
+    const fixture = TestBed.createComponent(EditorPageComponent);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('[aria-label="Compartir proyecto"] svg')).not.toBeNull();
+    expect(root.querySelector('[aria-label="Abrir chat del proyecto"] svg')).not.toBeNull();
+    expect(root.querySelector('[aria-label="Generar backend"] svg')).not.toBeNull();
+    expect(root.querySelector('[aria-label="Mostrar herramientas UML"] svg')).not.toBeNull();
+    expect(root.querySelector('[aria-label="Mostrar inspector"] svg')).not.toBeNull();
+  });
+
   function diagramWithClass(): DiagramDetail {
     return {
       ...detail,

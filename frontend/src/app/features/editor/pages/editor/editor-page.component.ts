@@ -40,6 +40,7 @@ import { ProjectService } from '../../../projects/services/project.service';
 import { ShareProjectModalComponent } from '../../../projects/components/share-project-modal/share-project-modal.component';
 import { ExportMenuComponent } from '../../components/export-menu/export-menu.component';
 import { BackendGeneratorService, BackendGenerationRequest } from '../../services/backend-generator.service';
+import { ProjectChatComponent } from '../../components/project-chat/project-chat.component';
 
 type EditorTool = 'SELECT' | 'CLASS' | 'RELATION';
 type RelationType =
@@ -159,7 +160,7 @@ type RelationPropertyOperation =
 
 @Component({
   selector: 'app-editor-page',
-  imports: [RouterLink, DecimalPipe, KeyValuePipe, ShareProjectModalComponent, ExportMenuComponent],
+  imports: [RouterLink, DecimalPipe, KeyValuePipe, ShareProjectModalComponent, ExportMenuComponent, ProjectChatComponent],
   templateUrl: './editor-page.component.html',
   styleUrl: './editor-page.component.scss',
 })
@@ -197,6 +198,10 @@ export class EditorPageComponent implements OnDestroy {
   readonly presenceOpen = signal(false);
   readonly isReadOnly = computed(() => this.currentUserRole() === 'VIEWER');
   readonly shareOpen = signal(false);
+  readonly chatOpen = signal(false);
+  readonly moreActionsOpen = signal(false);
+  readonly toolbarOpen = signal(false);
+  readonly inspectorOpen = signal(false);
   readonly pendingRelationDeletion = signal<UmlRelation | null>(null);
   readonly relationMultiplicityDraft = signal<RelationMultiplicityDraft | null>(null);
   readonly relationRolesDraft = signal<RelationRolesDraft | null>(null);
@@ -456,9 +461,25 @@ export class EditorPageComponent implements OnDestroy {
     if (tool !== 'RELATION') this.relationError.set('');
   }
 
-  openShare(): void { this.shareOpen.set(true); }
+  openShare(): void { this.moreActionsOpen.set(false); this.shareOpen.set(true); }
+
+  toggleMoreActions(event?: Event): void {
+    event?.stopPropagation();
+    this.moreActionsOpen.update((value) => !value);
+  }
+
+  closeMoreActions(): void { this.moreActionsOpen.set(false); }
+
+  openChat(): void {
+    this.moreActionsOpen.set(false);
+    this.chatOpen.set(true);
+  }
+
+  toggleToolbar(): void { this.toolbarOpen.update((value) => !value); }
+  toggleInspector(): void { this.inspectorOpen.update((value) => !value); }
 
   openGeneratorDialog(): void {
+    this.moreActionsOpen.set(false);
     const name = this.diagram()?.name ?? 'uml-diagram';
     const artifact = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'generated-backend';
     this.generatorOptions.set({ ...this.generatorOptions(), artifactId: artifact, projectName: `${name} Backend` });
@@ -524,6 +545,11 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   onEditorKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.moreActionsOpen()) {
+      this.closeMoreActions();
+      event.stopPropagation();
+      return;
+    }
     if (event.code === 'Space' && !this.isEditableTarget(event.target)) {
       this.spacePressed.set(true);
       event.preventDefault();
@@ -540,6 +566,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   openImportDialog(): void {
+    this.moreActionsOpen.set(false);
     this.importDialogOpen.set(true);
     this.importError.set('');
     this.importDragOver.set(false);
@@ -548,6 +575,7 @@ export class EditorPageComponent implements OnDestroy {
 
   openImageUpdate(): void {
     if (this.isReadOnly()) return;
+    this.moreActionsOpen.set(false);
     this.imageUpdateOpen.set(true); this.imageUpdateError.set(''); this.imageUpdatePreview.set(null);
     this.imageUpdateFile.set(null); this.imageUpdateSelected.set({});
   }

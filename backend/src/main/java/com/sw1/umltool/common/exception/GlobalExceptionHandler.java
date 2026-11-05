@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.sw1.umltool.features.project.exception.ProjectForbiddenException;
 import com.sw1.umltool.features.project.exception.ProjectNotFoundException;
+import com.sw1.umltool.features.ai.chat.exception.AiConversationNotFoundException;
+import com.sw1.umltool.features.ai.memory.exception.AiMemoryNotFoundException;
 
 import java.util.stream.Collectors;
 
@@ -29,6 +31,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DiagramNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleDiagramNotFound(DiagramNotFoundException exception) {
         return error(HttpStatus.NOT_FOUND, "DIAGRAM_NOT_FOUND", exception.getMessage());
+    }
+
+    @ExceptionHandler(AiConversationNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleAiConversationNotFound(AiConversationNotFoundException exception) {
+        return error(HttpStatus.NOT_FOUND, "AI_CONVERSATION_NOT_FOUND", exception.getMessage());
+    }
+
+    @ExceptionHandler(AiMemoryNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleAiMemoryNotFound(AiMemoryNotFoundException exception) {
+        return error(HttpStatus.NOT_FOUND, "AI_MEMORY_NOT_FOUND", exception.getMessage());
     }
 
     @ExceptionHandler(VersionConflictException.class)
