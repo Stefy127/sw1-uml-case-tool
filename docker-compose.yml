@@ -28,6 +28,25 @@ services:
     volumes:
       - n8n_data:/home/node/.n8n
 
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    container_name: umltool-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-2m}
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   backend:
     build:
       context: ./backend
@@ -48,6 +67,14 @@ services:
       N8N_IMAGE_READ_TIMEOUT_SECONDS: ${N8N_IMAGE_READ_TIMEOUT_SECONDS:-${N8N_READ_TIMEOUT_SECONDS:-30}}
       N8N_UML_IMAGE_WEBHOOK_URL: ${N8N_UML_IMAGE_WEBHOOK_URL}
       N8N_UML_IMAGE_WEBHOOK_TOKEN: ${N8N_UML_IMAGE_WEBHOOK_TOKEN}
+      N8N_UML_IMAGE_UPDATE_WEBHOOK_URL: ${N8N_UML_IMAGE_UPDATE_WEBHOOK_URL}
+      AI_CHAT_MAX_MESSAGE_LENGTH: ${AI_CHAT_MAX_MESSAGE_LENGTH:-4000}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-4096}
+      AI_ORCHESTRATOR_ENABLED: ${AI_ORCHESTRATOR_ENABLED:-true}
+      AI_ORCHESTRATOR_QUEUE_CAPACITY: ${AI_ORCHESTRATOR_QUEUE_CAPACITY:-2}
+      AI_ORCHESTRATOR_TIMEOUT_SECONDS: ${AI_ORCHESTRATOR_TIMEOUT_SECONDS:-120}
     ports:
       - "${BACKEND_PORT}:8080"
 
@@ -63,3 +90,4 @@ services:
 volumes:
   postgres_data:
   n8n_data:
+  ollama_models:

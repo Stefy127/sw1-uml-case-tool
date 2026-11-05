@@ -113,6 +113,22 @@ class CollaborationBroadcastServiceTest {
         assertTrue(service.sessions("diagram-1").isEmpty());
     }
 
+    @Test
+    void projectSubscriptionUsesTheSameSafeWrapperAndCanBeReleased() {
+        CollaborationBroadcastService service = service();
+        WebSocketSession session = session("s1");
+        session.getAttributes().put("userId", "user-1");
+
+        service.addProject("project-1", session);
+        WebSocketSession safe = service.projectSessions("project-1").iterator().next();
+        service.add("diagram-1", session);
+
+        assertSame(safe, service.sessions("diagram-1").iterator().next());
+        service.removeProject("project-1", session);
+        assertTrue(service.projectSessions("project-1").isEmpty());
+        assertFalse(service.sessions("diagram-1").isEmpty());
+    }
+
     private CollaborationBroadcastService service() {
         ObjectMapper mapper = mock(ObjectMapper.class);
         try {

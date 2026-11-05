@@ -1,0 +1,51 @@
+<aside class="project-chat" aria-label="Chat del proyecto">
+  <header class="project-chat-header">
+    <span class="chat-connection-status" aria-live="polite">{{ connectionStatusLabel() }}</span>
+    <div><span class="eyebrow">Colaboración</span><h2>Chat del proyecto</h2></div>
+    <button type="button" class="chat-memory-toggle" (click)="toggleMemory()" [attr.aria-expanded]="memoryOpen()" aria-controls="chat-memory-title">🧠 <span>Administrar memoria</span></button><button type="button" class="chat-close" aria-label="Cerrar chat" (click)="closePanel()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+  </header>
+
+  <nav class="chat-tabs" aria-label="Tipo de conversación">
+    <button type="button" [class.active]="!privateChat()" [attr.aria-selected]="!privateChat()" (click)="setMode(false)">Proyecto</button>
+    <button type="button" [class.active]="privateChat()" [attr.aria-selected]="privateChat()" (click)="setMode(true)">Privado con IA</button>
+  </nav>
+
+  @if (memoryOpen()) { <section class="chat-memory" aria-labelledby="chat-memory-title">
+    <div class="chat-memory-heading"><div><span class="eyebrow">Contexto persistente</span><h3 id="chat-memory-title">Memoria</h3></div><span class="chat-memory-scope">{{ memoryScope() === 'PROJECT' ? 'Proyecto' : 'Privada' }}</span></div>
+    <div class="chat-memory-tabs" role="tablist" aria-label="Ámbito de memoria">
+      <button type="button" role="tab" [class.active]="memoryScope() === 'PROJECT'" [attr.aria-selected]="memoryScope() === 'PROJECT'" (click)="setMemoryScope('PROJECT')">Compartida</button>
+      <button type="button" role="tab" [class.active]="memoryScope() === 'PRIVATE'" [attr.aria-selected]="memoryScope() === 'PRIVATE'" (click)="setMemoryScope('PRIVATE')">Privada</button>
+    </div>
+    @if (canManageMemory()) {
+      <div class="chat-memory-form"><label for="memory-content">{{ editingMemoryId() ? 'Editar recuerdo' : 'Guardar un recuerdo explícito' }}</label><textarea id="memory-content" [value]="memoryDraft()" (input)="memoryDraft.set($any($event.target).value)" maxlength="2000" rows="2" placeholder="Ej. La convención del proyecto usa UUID..."></textarea><div class="chat-memory-form-footer"><select [value]="memoryType()" (change)="memoryType.set($any($event.target).value)"><option value="NOTE">Nota</option><option value="CONVENTION">Convención</option><option value="DECISION">Decisión</option><option value="PREFERENCE">Preferencia</option></select><div><button type="button" class="btn btn-ghost" [disabled]="memorySaving() || !memoryDraft().trim()" (click)="saveMemory()">{{ memorySaving() ? 'Guardando...' : editingMemoryId() ? 'Actualizar' : 'Guardar' }}</button>@if (editingMemoryId()) { <button type="button" class="btn btn-ghost" [disabled]="memorySaving()" (click)="cancelMemoryEdit()">Cancelar</button> }</div></div></div>
+    }
+    @if (memoryError()) { <p class="chat-error" role="alert">{{ memoryError() }}</p> }
+    @if (memoryLoading()) { <div class="chat-memory-empty">Cargando memoria...</div> }
+    @if (!memoryLoading() && !memories().length) { <div class="chat-memory-empty">No hay recuerdos en este ámbito.</div> }
+    @if (!memoryLoading()) { <div class="chat-memory-list">@for (memory of memories(); track memory.id) { <article class="chat-memory-item"><div><span class="chat-memory-type">{{ memory.type }}</span><p>{{ memory.content }}</p></div>@if (canManageMemory()) { <div><button type="button" class="chat-memory-edit" [disabled]="memorySaving()" (click)="editMemory(memory)">Editar</button><button type="button" class="chat-memory-delete" [disabled]="memorySaving()" (click)="removeMemory(memory)" aria-label="Eliminar recuerdo">×</button></div> }</article> }</div> }
+    <button type="button" class="chat-memory-back" (click)="closeMemory()">Volver al chat</button>
+  </section> }
+
+  @if (privateChat()) { <p class="chat-privacy">Esta conversación es privada y solo visible para ti. Las respuestas usan la IA local del proyecto.</p> }
+  @if (aiGenerating()) { <p class="chat-ai-status" role="status">La IA está pensando...</p> }
+  @if (loading() && !messages().length) { <div class="chat-state">Cargando historial...</div> }
+  @if (error()) { <p class="chat-error">{{ error() }}</p> }
+  @if (nextCursor()) { <button type="button" class="chat-load-more" [disabled]="loading()" (click)="loadOlder()">Cargar mensajes anteriores</button> }
+  <div #messagesContainer class="chat-messages" aria-live="polite" (scroll)="onMessagesScroll()">
+    @for (message of messages(); track message.id) {
+      @if (showDayDivider($index)) { <div class="chat-day-divider"><span>{{ message.createdAt | date:'longDate' }}</span></div> }
+      <article class="chat-message" [class.chat-message-own]="isOwnMessage(message)" [class.chat-message-other]="!isOwnMessage(message)" [class.chat-message-grouped]="!messageGroupStarts($index)" [class.ai-message]="message.authorType === 'AI'">
+        @if (messageGroupStarts($index)) { <div class="chat-message-meta"><span class="chat-author"><span class="chat-avatar" aria-hidden="true">{{ messageInitials(message) }}</span><strong>{{ message.authorName }}</strong></span><time>{{ message.createdAt | date:'HH:mm' }}</time></div> }
+        <p>{{ message.content }}</p>
+      </article>
+    } @empty { @if (!loading()) { <div class="chat-state">Aún no hay mensajes.</div> } }
+  </div>
+  @if (newMessages()) { <button type="button" class="chat-new-messages" (click)="scrollToLatest()">Nuevos mensajes</button> }
+
+  <form class="chat-composer" (ngSubmit)="send()">
+    <label for="project-chat-message">Mensaje</label>
+    <textarea id="project-chat-message" name="message" [(ngModel)]="draft" maxlength="4000" rows="3" placeholder="Escribe un mensaje..." (keydown)="onComposerKeydown($event)" aria-describedby="project-chat-hint"></textarea>
+    <small id="project-chat-hint" class="chat-composer-hint">Enter para enviar · Shift+Enter para una nueva línea</small>
+    <div class="chat-composer-footer"><small>{{ draft.length }}/4000</small><button class="btn btn-primary" type="submit" [disabled]="!draft.trim() || sending() || loading()">{{ sending() ? 'Enviando...' : 'Enviar' }}</button></div>
+  </form>
+</aside>

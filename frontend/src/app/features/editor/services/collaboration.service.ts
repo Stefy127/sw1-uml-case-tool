@@ -2,12 +2,13 @@ import { Injectable, signal } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
 import { API_BASE_URL } from '../../../core/config/api.config';
 import { ExecuteDiagramOperationRequest, OperationExecutionResponse } from '../models/diagram-operation.model';
+import { AiMemory, AiMessage } from '../models/ai-chat.model';
 
 export type CollaborationStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING' | 'ERROR';
 export interface OnlineUser { userId: string; firstName: string; lastName: string; role: 'OWNER' | 'EDITOR' | 'VIEWER'; }
 export interface RemoteCursor { user: OnlineUser; x: number; y: number; updatedAt: number; }
 export interface RemoteSelection { user: OnlineUser; elementType: 'CLASS' | 'RELATION' | null; elementId: string | null; }
-export interface CollaborationEvent { type: string; diagramId?: string; operationId?: string; reason?: string; serverVersion?: number; version?: number; users?: OnlineUser[]; result?: OperationExecutionResponse; canonicalModel?: OperationExecutionResponse['canonicalModel']; viewState?: OperationExecutionResponse['viewState']; actor?: { userId: string }; user?: OnlineUser; x?: number; y?: number; elementType?: 'CLASS' | 'RELATION' | null; elementId?: string | null; }
+export interface CollaborationEvent { type: string; diagramId?: string; projectId?: string; conversationId?: string; clientMessageId?: string; operationId?: string; reason?: string; serverVersion?: number; version?: number; users?: OnlineUser[]; result?: OperationExecutionResponse; message?: AiMessage; memory?: AiMemory; memoryId?: string; errorMessage?: string; canonicalModel?: OperationExecutionResponse['canonicalModel']; viewState?: OperationExecutionResponse['viewState']; actor?: { userId: string }; user?: OnlineUser; x?: number; y?: number; elementType?: 'CLASS' | 'RELATION' | null; elementId?: string | null; }
 
 @Injectable({ providedIn: 'root' })
 export class CollaborationService {
@@ -26,8 +27,10 @@ export class CollaborationService {
   private needsResync = false;
   private resyncing = false;
   private pending = new Map<string, { resolve: (response: OperationExecutionResponse) => void; reject: (error: unknown) => void }>();
+  private projectSubscriptions = new Map<string, string>();
 
   connect(diagramId: string, knownVersion: number): void {
+    if (this.diagramId && this.diagramId !== diagramId) this.projectSubscriptions.clear();
     this.diagramId = diagramId;
     this.knownVersion = knownVersion;
     this.joined.set(false);
@@ -66,13 +69,14 @@ export class CollaborationService {
     this.onlineUsers.set([]);
     this.remoteCursors.set({});
     this.remoteSelections.set({});
+    this.projectSubscriptions.clear();
     for (const pending of this.pending.values()) pending.reject(new Error('WebSocket disconnected'));
     this.pending.clear();
   }
 
   hasActiveDiagram(): boolean { return !!this.diagramId && typeof WebSocket !== 'undefined' && !!localStorage.getItem('sw1.auth.token'); }
   isConnected(): boolean { return this.status() === 'CONNECTED' && this.joined() && this.socket?.readyState === WebSocket.OPEN; }
-  markResynced(version: number): void { this.knownVersion = version; this.needsResync = false; this.resyncing = false; this.joined.set(true); this.flushPending(); }
+  markResynced(version: number): void { this.knownVersion = version; this.needsResync = false; this.resyncing = false; this.joined.set(true); this.flushPending(); this.flushProjectSubscriptions(); }
   markApplied(version: number): void { this.knownVersion = version; }
 
   sendCursorPosition(x: number, y: number): void {
@@ -84,6 +88,24 @@ export class CollaborationService {
   }
   sendSelection(elementType: 'CLASS' | 'RELATION' | null, elementId: string | null): void {
     if (this.isConnected()) this.send({ type: 'SELECTION_CHANGE', diagramId: this.diagramId, elementType, elementId });
+  }
+
+  subscribeProject(projectId: string, conversationId: string): void {
+    this.projectSubscriptions.set(projectId, conversationId);
+    if (this.isConnected()) this.send({ type: 'CHAT_PROJECT_SUBSCRIBE', projectId, conversationId });
+  }
+
+  unsubscribeProject(projectId: string): void {
+    this.projectSubscriptions.delete(projectId);
+    if (this.isConnected()) this.send({ type: 'CHAT_PROJECT_UNSUBSCRIBE', projectId });
+  }
+
+  sendChatMessage(projectId: string, conversationId: string, content: string): string | null {
+    if (!this.isConnected() || !this.projectSubscriptions.has(projectId)) return null;
+    const clientMessageId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    this.send({ type: 'CHAT_MESSAGE_SEND', projectId, conversationId, clientMessageId, content });
+    return clientMessageId;
   }
 
   sendOperation(request: ExecuteDiagramOperationRequest): Observable<OperationExecutionResponse> {
@@ -102,6 +124,7 @@ export class CollaborationService {
     if (message.type === 'JOINED') {
       this.joined.set(!this.needsResync);
       if (!this.needsResync) this.flushPending();
+      this.flushProjectSubscriptions();
       this.events.next(message);
       return;
     }
@@ -160,6 +183,10 @@ export class CollaborationService {
       const operation = this.pendingOperations.get(operationId);
       if (operation) this.sendOperationFrame(operation);
     }
+  }
+  private flushProjectSubscriptions(): void {
+    if (!this.isConnected()) return;
+    for (const [projectId, conversationId] of this.projectSubscriptions) this.send({ type: 'CHAT_PROJECT_SUBSCRIBE', projectId, conversationId });
   }
   private pendingOperations = new Map<string, ExecuteDiagramOperationRequest['operation']>();
   private nextCursorAt = 0;

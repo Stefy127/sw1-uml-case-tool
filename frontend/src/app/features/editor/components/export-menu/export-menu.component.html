@@ -1,5 +1,5 @@
 <div class="export-menu">
-  <button class="btn btn-soft" type="button" aria-haspopup="menu" [attr.aria-expanded]="open()" (click)="toggle()">⇩ Exportar</button>
+  <button class="btn btn-soft editor-export-trigger" type="button" title="Exportar diagrama" aria-label="Exportar diagrama" aria-haspopup="menu" [attr.aria-expanded]="open()" (click)="toggle()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m-4-4 4 4 4-4M5 19h14" /></svg><span>Exportar</span></button>
   @if (open()) {
     <div class="export-popover" role="menu">
       <button type="button" role="menuitem" [disabled]="loading()" (click)="exportXmi()">{{ loading() ? 'Exportando…' : 'XMI / Enterprise Architect' }}</button>

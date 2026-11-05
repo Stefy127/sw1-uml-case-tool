@@ -1,7 +1,7 @@
 import { provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { Component } from '@angular/core';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { Router } from '@angular/router';
 
 import { ProjectService } from '../../services/project.service';
@@ -108,7 +108,7 @@ describe('ProjectsPageComponent', () => {
     (fixture.nativeElement.querySelector('.project-menu-trigger') as HTMLButtonElement).click();
     fixture.detectChanges();
     const menuButtons = Array.from(fixture.nativeElement.querySelectorAll('.project-menu button')) as HTMLButtonElement[];
-    expect(menuButtons.filter((button) => button.disabled)).toHaveLength(1);
+    expect(menuButtons.filter((button) => button.disabled)).toHaveLength(0);
     (Array.from(fixture.nativeElement.querySelectorAll('.project-menu button')) as HTMLButtonElement[])
       .find((button) => button.textContent?.includes('Compartir'))?.click();
     fixture.detectChanges();
@@ -149,6 +149,37 @@ describe('ProjectsPageComponent', () => {
 
     expect(deleteProject).toHaveBeenCalledWith('p1');
     expect(page.projects()).toEqual([]);
+  });
+
+  it('duplicates a project, adds the copy and does not navigate', async () => {
+    const current = project();
+    const duplicate = { ...current, id: 'copy-1', name: 'Proyecto demo - Copia' };
+    const duplicateProject = vi.fn(() => of(duplicate));
+    const projectService = { getProjectsByOwner: () => of([]), duplicateProject };
+    await TestBed.configureTestingModule({ imports: [ProjectsPageComponent], providers: [{ provide: ProjectService, useValue: projectService }, provideRouter([])] }).compileComponents();
+    const fixture = TestBed.createComponent(ProjectsPageComponent);
+    const page = fixture.componentInstance;
+    page.projects.set([current]); page.loading.set(false); fixture.detectChanges();
+    const navigate = vi.spyOn(page, 'openProject');
+    (fixture.nativeElement.querySelector('.project-menu-trigger') as HTMLButtonElement).click(); fixture.detectChanges();
+    const copyButton = (Array.from(fixture.nativeElement.querySelectorAll('.project-menu button')) as HTMLButtonElement[]).find((button) => button.textContent?.includes('Duplicar proyecto'));
+    copyButton?.click();
+
+    expect(duplicateProject).toHaveBeenCalledWith('p1');
+    expect(page.projects()[0].name).toBe('Proyecto demo - Copia');
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('keeps duplication error visible and does not navigate', async () => {
+    const projectService = { getProjectsByOwner: () => of([]), duplicateProject: () => throwError(() => new Error('failure')) };
+    await TestBed.configureTestingModule({ imports: [ProjectsPageComponent], providers: [{ provide: ProjectService, useValue: projectService }, provideRouter([])] }).compileComponents();
+    const fixture = TestBed.createComponent(ProjectsPageComponent);
+    const page = fixture.componentInstance;
+    page.projects.set([project()]); page.loading.set(false); fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.project-menu-trigger') as HTMLButtonElement).click(); fixture.detectChanges();
+    const button = (Array.from(fixture.nativeElement.querySelectorAll('.project-menu button')) as HTMLButtonElement[]).find((item) => item.textContent?.includes('Duplicar proyecto'));
+    button?.click();
+    expect(page.duplicateError()).toBe('No se pudo duplicar el proyecto.');
   });
 
   function project() {

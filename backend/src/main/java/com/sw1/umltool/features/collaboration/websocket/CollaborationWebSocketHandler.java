@@ -9,6 +9,9 @@ import com.sw1.umltool.features.diagram.repository.DiagramRepository;
 import com.sw1.umltool.features.diagram.service.PersistentDiagramOperationService;
 import com.sw1.umltool.features.project.model.ProjectMemberRole;
 import com.sw1.umltool.features.project.service.ProjectAccessService;
+import com.sw1.umltool.features.ai.chat.dto.AiMessageResponse;
+import com.sw1.umltool.features.ai.chat.dto.SendAiMessageRequest;
+import com.sw1.umltool.features.ai.chat.service.AiChatService;
 import com.sw1.umltool.features.auth.repository.UserRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
@@ -40,13 +43,15 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
     private final Map<String, OperationExecutionResponse> appliedOperations = new ConcurrentHashMap<>();
     private final Map<String, Object> diagramLocks = new ConcurrentHashMap<>();
     private final CollaborationBroadcastService broadcaster;
+    private final AiChatService chat;
 
     public CollaborationWebSocketHandler(ObjectMapper objectMapper, DiagramRepository diagrams,
                                          ProjectAccessService access,
                                          UserRepository users,
                                          CollaborationBroadcastService broadcaster,
                                          PersistentDiagramOperationService operations,
-                                         DiagramOperationPayloadMapper payloadMapper) {
+                                         DiagramOperationPayloadMapper payloadMapper,
+                                         AiChatService chat) {
         this.objectMapper = objectMapper;
         this.diagrams = diagrams;
         this.access = access;
@@ -54,6 +59,7 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
         this.broadcaster = broadcaster;
         this.operations = operations;
         this.payloadMapper = payloadMapper;
+        this.chat = chat;
     }
 
     @Override
@@ -65,6 +71,9 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
         else if ("APPLY_OPERATION".equals(type)) apply(session, root);
         else if ("CURSOR_MOVE".equals(type)) cursorMove(session, root);
         else if ("SELECTION_CHANGE".equals(type)) selectionChange(session, root);
+        else if ("CHAT_PROJECT_SUBSCRIBE".equals(type)) chatSubscribe(session, root);
+        else if ("CHAT_PROJECT_UNSUBSCRIBE".equals(type)) chatUnsubscribe(session, root);
+        else if ("CHAT_MESSAGE_SEND".equals(type)) chatMessage(session, root);
         else send(session, Map.of("type", "ERROR", "message", "Mensaje WebSocket no soportado."));
     }
 
@@ -87,6 +96,51 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
         Map<String, Object> message = new HashMap<>();
         message.put("type", "REMOTE_SELECTION"); message.put("diagramId", diagramId); message.put("user", presenceUser(session, diagramId)); message.put("elementType", elementType); message.put("elementId", elementId);
         sendToOthers(diagramId, session, message);
+    }
+
+    private void chatSubscribe(WebSocketSession session, JsonNode root) throws IOException {
+        String projectId = text(root, "projectId");
+        String userId = userId(session);
+        access.requireMember(projectId, userId);
+        String conversationId = text(root, "conversationId");
+        chat.requireConversationAccess(projectId, userId, conversationId);
+        broadcaster.addProject(projectId, session);
+        sessionProjectIds(session).add(projectId);
+        send(session, Map.of("type", "CHAT_PROJECT_SUBSCRIBED", "projectId", projectId, "conversationId", conversationId));
+    }
+
+    private void chatUnsubscribe(WebSocketSession session, JsonNode root) {
+        String projectId = text(root, "projectId");
+        broadcaster.removeProject(projectId, session);
+        sessionProjectIds(session).remove(projectId);
+    }
+
+    private void chatMessage(WebSocketSession session, JsonNode root) throws IOException {
+        String projectId = text(root, "projectId");
+        String conversationId = text(root, "conversationId");
+        String clientMessageId = text(root, "clientMessageId");
+        String content = text(root, "content");
+        String userId = userId(session);
+        if (!sessionProjectIds(session).contains(projectId)) throw new IllegalArgumentException("El chat no está suscrito a este proyecto.");
+        try {
+            var saved = chat.saveGroupMessage(projectId, userId, conversationId,
+                    new SendAiMessageRequest(content, clientMessageId));
+            AiMessageResponse message = AiMessageResponse.from(saved.message());
+            Map<String, Object> event = Map.of("type", "CHAT_MESSAGE_CREATED", "projectId", projectId,
+                    "conversationId", conversationId, "clientMessageId", message.clientMessageId(), "message", message);
+            if (saved.created()) broadcaster.broadcastProjectMessage(projectId, event);
+            else send(session, event);
+        } catch (RuntimeException error) {
+            log.debug("[CHAT REJECTED] projectId={} conversationId={} clientMessageId={} reason={}", projectId, conversationId, clientMessageId, error.getMessage());
+            send(session, Map.of("type", "CHAT_MESSAGE_REJECTED", "projectId", projectId,
+                    "conversationId", conversationId, "clientMessageId", clientMessageId,
+                    "errorMessage", "No se pudo enviar el mensaje."));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Set<String> sessionProjectIds(WebSocketSession session) {
+        return (Set<String>) session.getAttributes().computeIfAbsent("projectIds", ignored -> ConcurrentHashMap.newKeySet());
     }
 
     private boolean joinedOn(WebSocketSession session, String diagramId) { return diagramId.equals(session.getAttributes().get("diagramId")); }

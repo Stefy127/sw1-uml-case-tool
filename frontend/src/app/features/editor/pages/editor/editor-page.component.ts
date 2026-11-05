@@ -27,6 +27,8 @@ import { CollaborationService } from '../../services/collaboration.service';
 import { DiagramService } from '../../services/diagram.service';
 import { XmiImportService } from '../../services/xmi-import.service';
 import { ImageImportService } from '../../services/image-import.service';
+import { ImageUpdateService } from '../../services/image-update.service';
+import { ImageUpdatePreview, ImageUpdateProposal } from '../../models/image-update.model';
 import { XmiImportResponse } from '../../models/xmi-import.model';
 import { VoiceCommand, VoiceCommandPreview } from '../../models/voice-command.model';
 import { VoiceCommandParserService } from '../../services/voice-command-parser.service';
@@ -38,6 +40,7 @@ import { ProjectService } from '../../../projects/services/project.service';
 import { ShareProjectModalComponent } from '../../../projects/components/share-project-modal/share-project-modal.component';
 import { ExportMenuComponent } from '../../components/export-menu/export-menu.component';
 import { BackendGeneratorService, BackendGenerationRequest } from '../../services/backend-generator.service';
+import { ProjectChatComponent } from '../../components/project-chat/project-chat.component';
 
 type EditorTool = 'SELECT' | 'CLASS' | 'RELATION';
 type RelationType =
@@ -157,7 +160,7 @@ type RelationPropertyOperation =
 
 @Component({
   selector: 'app-editor-page',
-  imports: [RouterLink, DecimalPipe, KeyValuePipe, ShareProjectModalComponent, ExportMenuComponent],
+  imports: [RouterLink, DecimalPipe, KeyValuePipe, ShareProjectModalComponent, ExportMenuComponent, ProjectChatComponent],
   templateUrl: './editor-page.component.html',
   styleUrl: './editor-page.component.scss',
 })
@@ -168,6 +171,7 @@ export class EditorPageComponent implements OnDestroy {
   readonly collaboration = inject(CollaborationService, { optional: true });
   private readonly xmiImportService = inject(XmiImportService);
   private readonly imageImportService = inject(ImageImportService);
+  private readonly imageUpdateService = inject(ImageUpdateService);
   private readonly backendGenerator = inject(BackendGeneratorService);
   private readonly voiceParser = inject(VoiceCommandParserService);
   private readonly voiceRecognition = inject(VoiceRecognitionService);
@@ -194,6 +198,10 @@ export class EditorPageComponent implements OnDestroy {
   readonly presenceOpen = signal(false);
   readonly isReadOnly = computed(() => this.currentUserRole() === 'VIEWER');
   readonly shareOpen = signal(false);
+  readonly chatOpen = signal(false);
+  readonly moreActionsOpen = signal(false);
+  readonly toolbarOpen = signal(false);
+  readonly inspectorOpen = signal(false);
   readonly pendingRelationDeletion = signal<UmlRelation | null>(null);
   readonly relationMultiplicityDraft = signal<RelationMultiplicityDraft | null>(null);
   readonly relationRolesDraft = signal<RelationRolesDraft | null>(null);
@@ -229,6 +237,20 @@ export class EditorPageComponent implements OnDestroy {
   readonly importKind = computed<'XMI' | 'IMAGE' | null>(() => {
     const name = this.importFile()?.name.toLowerCase() ?? '';
     return name.endsWith('.xmi') || name.endsWith('.xml') ? 'XMI' : name ? 'IMAGE' : null;
+  });
+  readonly imageUpdateOpen = signal(false);
+  readonly imageUpdateFile = signal<File | null>(null);
+  readonly imageUpdateInstruction = signal('');
+  readonly imageUpdateAllowDestructive = signal(false);
+  readonly imageUpdatePreview = signal<ImageUpdatePreview | null>(null);
+  readonly imageUpdateSelected = signal<Record<string, boolean>>({});
+  readonly imageUpdateLoading = signal(false);
+  readonly imageUpdateError = signal('');
+  readonly imageUpdateHasChanges = computed(() => (this.imageUpdatePreview()?.operations?.length ?? 0) > 0);
+  readonly imageUpdateSelectedCount = computed(() => {
+    const preview = this.imageUpdatePreview();
+    if (!preview) return 0;
+    return preview.operations.filter(operation => this.imageUpdateSelected()[operation.proposalId] === true).length;
   });
   readonly generatorDialogOpen = signal(false);
   readonly generatorLoading = signal(false);
@@ -439,9 +461,25 @@ export class EditorPageComponent implements OnDestroy {
     if (tool !== 'RELATION') this.relationError.set('');
   }
 
-  openShare(): void { this.shareOpen.set(true); }
+  openShare(): void { this.moreActionsOpen.set(false); this.shareOpen.set(true); }
+
+  toggleMoreActions(event?: Event): void {
+    event?.stopPropagation();
+    this.moreActionsOpen.update((value) => !value);
+  }
+
+  closeMoreActions(): void { this.moreActionsOpen.set(false); }
+
+  openChat(): void {
+    this.moreActionsOpen.set(false);
+    this.chatOpen.set(true);
+  }
+
+  toggleToolbar(): void { this.toolbarOpen.update((value) => !value); }
+  toggleInspector(): void { this.inspectorOpen.update((value) => !value); }
 
   openGeneratorDialog(): void {
+    this.moreActionsOpen.set(false);
     const name = this.diagram()?.name ?? 'uml-diagram';
     const artifact = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'generated-backend';
     this.generatorOptions.set({ ...this.generatorOptions(), artifactId: artifact, projectName: `${name} Backend` });
@@ -507,6 +545,11 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   onEditorKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.moreActionsOpen()) {
+      this.closeMoreActions();
+      event.stopPropagation();
+      return;
+    }
     if (event.code === 'Space' && !this.isEditableTarget(event.target)) {
       this.spacePressed.set(true);
       event.preventDefault();
@@ -523,10 +566,76 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   openImportDialog(): void {
+    this.moreActionsOpen.set(false);
     this.importDialogOpen.set(true);
     this.importError.set('');
     this.importDragOver.set(false);
     this.importConfirming.set(false);
+  }
+
+  openImageUpdate(): void {
+    if (this.isReadOnly()) return;
+    this.moreActionsOpen.set(false);
+    this.imageUpdateOpen.set(true); this.imageUpdateError.set(''); this.imageUpdatePreview.set(null);
+    this.imageUpdateFile.set(null); this.imageUpdateSelected.set({});
+  }
+
+  closeImageUpdate(): void { if (!this.imageUpdateLoading()) this.imageUpdateOpen.set(false); }
+  selectImageUpdateFile(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.imageUpdateFile.set(input.files?.item(0) ?? null);
+    this.imageUpdatePreview.set(null); this.imageUpdateError.set('');
+  }
+  selectImageUpdateFileFromInput(input: HTMLInputElement): void {
+    this.imageUpdateFile.set(input.files?.item(0) ?? null);
+    this.imageUpdatePreview.set(null); this.imageUpdateSelected.set({}); this.imageUpdateError.set('');
+  }
+  toggleImageUpdateProposal(id: string): void { this.imageUpdateSelected.update(value => ({ ...value, [id]: !value[id] })); }
+  imageUpdateOperationLabel(operation: { type: string }): string {
+    const labels: Record<string, string> = {
+      CREATE_CLASS: 'Crear clase', DELETE_CLASS: 'Eliminar clase', RENAME_CLASS: 'Renombrar clase',
+      ADD_ATTRIBUTE: 'Agregar atributo', RENAME_ATTRIBUTE: 'Renombrar atributo',
+      CHANGE_ATTRIBUTE_TYPE: 'Cambiar tipo de atributo', REMOVE_ATTRIBUTE: 'Eliminar atributo',
+      ADD_METHOD: 'Agregar método', RENAME_METHOD: 'Renombrar método', REMOVE_METHOD: 'Eliminar método',
+      CREATE_RELATION: 'Crear relación', REMOVE_RELATION: 'Eliminar relación',
+      CHANGE_RELATION_TYPE: 'Cambiar tipo de relación',
+    };
+    return labels[operation.type] ?? operation.type;
+  }
+  imageUpdateOperationDetail(operation: ImageUpdateProposal): string {
+    const className = operation.className ?? operation.sourceClassName;
+    const otherClass = operation.secondaryClassName ?? operation.targetClassName;
+    if (operation.type === 'ADD_ATTRIBUTE') return `${className ?? 'Clase'} · ${operation.attributeName ?? 'Atributo'} · ${operation.attributeType ?? 'Tipo no indicado'}`;
+    if (operation.type === 'RENAME_ATTRIBUTE') return `${className ?? 'Clase'} · ${operation.attributeName ?? 'Atributo'} → ${operation.newAttributeName ?? 'Nuevo nombre'}`;
+    if (operation.type === 'CHANGE_ATTRIBUTE_TYPE') return `${className ?? 'Clase'} · ${operation.attributeName ?? 'Atributo'} · nuevo tipo: ${operation.attributeType ?? 'No indicado'}`;
+    if (['REMOVE_ATTRIBUTE', 'ADD_METHOD', 'RENAME_METHOD', 'REMOVE_METHOD'].includes(operation.type)) return `${className ?? 'Clase'} · ${operation.methodName ?? operation.attributeName ?? 'Elemento'}`;
+    if (['CREATE_RELATION', 'REMOVE_RELATION', 'CHANGE_RELATION_TYPE'].includes(operation.type)) return `${className ?? 'Origen'} ↔ ${otherClass ?? 'Destino'} · ${operation.relationType ?? 'Relación'}`;
+    if (operation.type === 'RENAME_CLASS') return `${operation.className ?? 'Clase'} → ${operation.newClassName ?? 'Nuevo nombre'}`;
+    return operation.summary?.trim() || 'Cambio semántico detectado';
+  }
+  imageUpdateApplyLabel(): string {
+    if (this.imageUpdateLoading()) return 'Aplicando...';
+    const count = this.imageUpdateSelectedCount();
+    return `Aplicar ${count} ${count === 1 ? 'cambio' : 'cambios'}`;
+  }
+  analyzeImageUpdate(): void {
+    const current = this.diagram(), file = this.imageUpdateFile();
+    if (!current || !file || this.imageUpdateLoading()) return;
+    this.imageUpdateLoading.set(true); this.imageUpdateError.set('');
+    this.imageUpdateService.preview(this.diagramId, current.version, file, this.imageUpdateInstruction(), this.imageUpdateAllowDestructive()).subscribe({
+      next: preview => { this.imageUpdatePreview.set({ ...preview, operations: preview.operations ?? [], warnings: preview.warnings ?? [] }); const selected: Record<string, boolean> = {}; (preview.operations ?? []).forEach(item => selected[item.proposalId] = !item.destructive); this.imageUpdateSelected.set(selected); this.imageUpdateLoading.set(false); },
+      error: (error: HttpErrorResponse) => { this.imageUpdateError.set(error.status === 409 ? 'El diagrama cambió. Vuelve a analizar la imagen.' : error.error?.message ?? 'No se pudieron analizar los cambios.'); this.imageUpdateLoading.set(false); },
+    });
+  }
+  applyImageUpdate(): void {
+    const preview = this.imageUpdatePreview();
+    if (!preview || this.imageUpdateSelectedCount() === 0 || this.imageUpdateLoading()) return;
+    const operations = preview.operations.map(proposal => ({ proposal, selected: this.imageUpdateSelected()[proposal.proposalId] === true })).filter(item => item.selected);
+    this.imageUpdateLoading.set(true); this.imageUpdateError.set('');
+    this.imageUpdateService.apply(this.diagramId, preview.baseVersion, this.imageUpdateAllowDestructive(), operations).subscribe({
+      next: result => { const current = this.diagram(); if (current) this.replaceDiagram({ ...current, canonicalModel: result.canonicalModel, viewState: result.viewState, version: result.newVersion, updatedAt: new Date().toISOString() }); this.imageUpdateLoading.set(false); this.imageUpdateOpen.set(false); },
+      error: (error: HttpErrorResponse) => { this.imageUpdateError.set(error.status === 409 ? 'El diagrama cambió mientras revisabas los cambios. Vuelve a analizar la imagen.' : error.error?.message ?? 'No se pudieron aplicar los cambios.'); this.imageUpdateLoading.set(false); },
+    });
   }
 
   closeImportDialog(): void {
