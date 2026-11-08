@@ -2,10 +2,10 @@ import { DatePipe } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, OnDestroy, OnInit, ViewChild, computed, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
-import { AiConversation, AiMemory, AiMemoryScope, AiMemoryType, AiMessage } from '../../models/ai-chat.model';
+import { AiContextScope, AiConversation, AiMemory, AiMemoryScope, AiMemoryType, AiMessage } from '../../models/ai-chat.model';
 import { AiChatService } from '../../services/ai-chat.service';
 import { CollaborationEvent, CollaborationService } from '../../services/collaboration.service';
-import { Subscription } from 'rxjs';
+import { Subscription, finalize, timeout } from 'rxjs';
 import { AuthService } from '../../../auth/services/auth.service';
 
 @Component({
@@ -16,6 +16,8 @@ import { AuthService } from '../../../auth/services/auth.service';
 })
 export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
   readonly projectId = input.required<string>();
+  readonly diagramId = input<string | null>(null);
+  readonly diagramVersion = input<number | null>(null);
   readonly close = output<void>();
   readonly privateChat = signal(false);
   readonly conversation = signal<AiConversation | null>(null);
@@ -26,6 +28,7 @@ export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
   readonly error = signal('');
   readonly newMessages = signal(false);
   readonly aiGenerating = signal(false);
+  readonly contextScope = signal<AiContextScope>('DIAGRAM');
   readonly memoryScope = signal<AiMemoryScope>('PROJECT');
   readonly memoryOpen = signal(false);
   readonly memories = signal<AiMemory[]>([]);
@@ -41,6 +44,8 @@ export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
   @ViewChild('messagesContainer') private messagesContainer?: ElementRef<HTMLElement>;
   private readonly eventsSubscription: Subscription;
   private pendingClientMessageId: string | null = null;
+  private pendingClientMessageContent: string | null = null;
+  private aiGenerationTimer: ReturnType<typeof setTimeout> | null = null;
   private scrollFrame: number | null = null;
 
   constructor(private readonly chat: AiChatService, private readonly collaboration: CollaborationService, private readonly auth: AuthService) {
@@ -52,13 +57,20 @@ export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
     return ({ CONNECTED: 'Conectado', CONNECTING: 'Conectando...', RECONNECTING: 'Reconectando...', ERROR: 'Desconectado', DISCONNECTED: 'Desconectado' } as Record<string, string>)[this.collaboration.status()] ?? 'Desconectado';
   }
 
-  ngOnInit(): void { this.loadConversation(); this.loadMemories(); }
+  ngOnInit(): void {
+    if (!this.diagramId()) this.contextScope.set('PROJECT');
+    this.loadConversation();
+    this.loadMemories();
+  }
+
+  setContextScope(scope: AiContextScope): void { this.contextScope.set(scope); }
 
   ngAfterViewInit(): void { this.scheduleScrollToBottom(); }
 
   ngOnDestroy(): void {
     this.eventsSubscription.unsubscribe();
     this.collaboration.unsubscribeProject(this.projectId());
+    if (this.aiGenerationTimer) clearTimeout(this.aiGenerationTimer);
     if (this.scrollFrame !== null) cancelAnimationFrame(this.scrollFrame);
   }
 
@@ -138,18 +150,53 @@ export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
     if (!content || !conversation || this.sending()) return;
     this.sending.set(true);
     this.aiGenerating.set(this.privateChat() || /(^|\s)@ia\b/i.test(content));
+    if (this.aiGenerating()) this.startAiGenerationTimeout();
     this.error.set('');
-    if (!this.privateChat()) {
-      const clientMessageId = this.collaboration.sendChatMessage(this.projectId(), conversation.id, content);
-      if (clientMessageId) {
-        this.pendingClientMessageId = clientMessageId;
-        return;
-      }
-    }
-    this.chat.sendMessage(this.projectId(), conversation.id, this.privateChat(), content).subscribe({
-      next: message => { this.messages.update(current => [...current, message]); this.draft = ''; this.sending.set(false); this.scheduleScrollToBottom(); },
-      error: error => { this.error.set(error?.error?.message ?? 'No se pudo enviar el mensaje.'); this.sending.set(false); this.aiGenerating.set(false); },
+    const clientMessageId = this.pendingClientMessageContent === content && this.pendingClientMessageId
+      ? this.pendingClientMessageId : this.newClientMessageId();
+    this.pendingClientMessageId = clientMessageId;
+    this.pendingClientMessageContent = content;
+    this.chat.sendMessage(this.projectId(), conversation.id, this.privateChat(), content, clientMessageId, this.chatContext()).pipe(
+      timeout({ each: 15000 }),
+      finalize(() => this.sending.set(false)),
+    ).subscribe({
+      next: message => { this.messages.update(current => current.some(item => item.id === message.id) ? current : [...current, message]); this.draft = ''; this.pendingClientMessageId = null; this.pendingClientMessageContent = null; this.sending.set(false); this.scheduleScrollToBottom(); },
+      error: error => { this.error.set(error?.name === 'TimeoutError' ? 'El envío tardó demasiado. Comprueba la conexión y vuelve a intentarlo.' : error?.error?.message ?? 'No se pudo enviar el mensaje.'); this.aiGenerating.set(false); },
     });
+  }
+
+  /** Renders a deliberately small Markdown subset after escaping user/AI text. */
+  renderMessage(content: string): string {
+    const escape = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character] ?? character));
+    const inline = (value: string) => escape(value)
+      .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    const lines = (content ?? '').split(/\r?\n/);
+    const html: string[] = [];
+    let list: string[] = [];
+    let listType: 'ul' | 'ol' | null = null;
+    const closeList = () => { if (list.length && listType) { html.push(`<${listType}>${list.join('')}</${listType}>`); list = []; listType = null; } };
+    for (const line of lines) {
+      const unordered = /^\s*-\s+/.test(line);
+      const ordered = /^\s*\d+(?:\\[.]|[.])\s+/.test(line);
+      if (unordered || ordered) {
+        const nextType = ordered ? 'ol' : 'ul';
+        if (listType && listType !== nextType) closeList();
+        listType = nextType;
+        const item = unordered ? line.replace(/^\s*-\s+/, '') : line.replace(/^\s*\d+(?:\\[.]|[.])\s+/, '');
+        list.push(`<li>${inline(item)}</li>`);
+        continue;
+      }
+      closeList();
+      if (line.trim()) html.push(`<p>${inline(line)}</p>`);
+    }
+    closeList();
+    return html.join('');
+  }
+
+  private newClientMessageId(): string {
+    return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
   onComposerKeydown(event: KeyboardEvent): void {
@@ -216,6 +263,15 @@ export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
     });
   }
 
+  private chatContext(): { diagramId: string | null; contextScope: AiContextScope; diagramVersion: number | null } {
+    const scope = this.diagramId() ? this.contextScope() : 'PROJECT';
+    return {
+      diagramId: scope === 'DIAGRAM' ? this.diagramId() : null,
+      contextScope: scope,
+      diagramVersion: scope === 'DIAGRAM' ? this.diagramVersion() : null,
+    };
+  }
+
   private loadMemories(): void {
     this.memoryLoading.set(true);
     this.memoryError.set('');
@@ -250,10 +306,20 @@ export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
     if (event.type === 'CHAT_MESSAGE_REJECTED' && event.projectId === this.projectId() && event.clientMessageId === this.pendingClientMessageId) {
       this.pendingClientMessageId = null;
       this.sending.set(false);
+      this.aiGenerating.set(false);
       this.error.set(event.errorMessage ?? 'No se pudo enviar el mensaje.');
       return;
     }
-    if (event.type === 'CHAT_AI_MESSAGE_CREATED' && event.projectId === this.projectId()) this.aiGenerating.set(false);
+    if (event.type === 'CHAT_MESSAGE_CREATED' && event.projectId === this.projectId() && event.clientMessageId === this.pendingClientMessageId) {
+      this.pendingClientMessageId = null;
+      this.draft = '';
+      this.sending.set(false);
+      if (this.aiGenerating()) this.startAiGenerationTimeout();
+    }
+    if (event.type === 'CHAT_AI_MESSAGE_CREATED' && event.projectId === this.projectId()) {
+      this.aiGenerating.set(false);
+      if (this.aiGenerationTimer) clearTimeout(this.aiGenerationTimer);
+    }
     if ((event.type !== 'CHAT_MESSAGE_CREATED' && event.type !== 'CHAT_AI_MESSAGE_CREATED') || event.projectId !== this.projectId() || !event.message) return;
     const conversation = this.conversation();
     if (!conversation || event.conversationId !== conversation.id) return;
@@ -267,6 +333,14 @@ export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
       this.draft = '';
       this.sending.set(false);
     }
+  }
+
+  private startAiGenerationTimeout(): void {
+    if (this.aiGenerationTimer) clearTimeout(this.aiGenerationTimer);
+    this.aiGenerationTimer = setTimeout(() => {
+      this.aiGenerating.set(false);
+      this.error.set('La generación de IA tardó demasiado. Puedes continuar escribiendo o reintentar.');
+    }, 150000);
   }
 
   private isNearBottom(): boolean {

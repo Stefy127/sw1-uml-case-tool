@@ -12,6 +12,7 @@ import com.sw1.umltool.features.project.service.ProjectAccessService;
 import com.sw1.umltool.features.ai.chat.dto.AiMessageResponse;
 import com.sw1.umltool.features.ai.chat.dto.SendAiMessageRequest;
 import com.sw1.umltool.features.ai.chat.service.AiChatService;
+import com.sw1.umltool.features.ai.chat.model.AiContextScope;
 import com.sw1.umltool.features.auth.repository.UserRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
@@ -120,11 +121,14 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
         String conversationId = text(root, "conversationId");
         String clientMessageId = text(root, "clientMessageId");
         String content = text(root, "content");
+        String diagramId = text(root, "diagramId");
+        AiContextScope contextScope = parseContextScope(root.path("contextScope").asText(null));
+        Long diagramVersion = root.path("diagramVersion").isNumber() ? root.path("diagramVersion").asLong() : null;
         String userId = userId(session);
         if (!sessionProjectIds(session).contains(projectId)) throw new IllegalArgumentException("El chat no está suscrito a este proyecto.");
         try {
             var saved = chat.saveGroupMessage(projectId, userId, conversationId,
-                    new SendAiMessageRequest(content, clientMessageId));
+                    new SendAiMessageRequest(content, clientMessageId, diagramId, contextScope, diagramVersion));
             AiMessageResponse message = AiMessageResponse.from(saved.message());
             Map<String, Object> event = Map.of("type", "CHAT_MESSAGE_CREATED", "projectId", projectId,
                     "conversationId", conversationId, "clientMessageId", message.clientMessageId(), "message", message);
@@ -136,6 +140,12 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
                     "conversationId", conversationId, "clientMessageId", clientMessageId,
                     "errorMessage", "No se pudo enviar el mensaje."));
         }
+    }
+
+    private AiContextScope parseContextScope(String value) {
+        if (value == null || value.isBlank()) return null;
+        try { return AiContextScope.valueOf(value.trim().toUpperCase(java.util.Locale.ROOT)); }
+        catch (IllegalArgumentException ignored) { return null; }
     }
 
     @SuppressWarnings("unchecked")

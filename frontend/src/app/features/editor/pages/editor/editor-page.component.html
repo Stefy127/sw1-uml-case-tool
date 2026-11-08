@@ -15,12 +15,10 @@
       @if (currentUserRole() === 'OWNER') {
         <button class="btn btn-soft editor-action-button" type="button" title="Compartir proyecto" aria-label="Compartir proyecto" (click)="openShare()"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 11a3 3 0 1 0 0-6M15.5 14a5.5 5.5 0 0 1 5 5" /></svg><span class="action-label">Compartir</span></button>
       }
-      @if (!isReadOnly()) {
         <div class="more-actions" (click)="$event.stopPropagation()">
           <button class="btn btn-soft editor-action-button more-actions-trigger" type="button" title="Más acciones" aria-label="Más acciones" aria-haspopup="menu" [attr.aria-expanded]="moreActionsOpen()" (click)="toggleMoreActions($event)"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="19" cy="12" r="1.2" /></svg><span class="action-label">Más acciones</span></button>
-          @if (moreActionsOpen()) { <div class="more-actions-menu" role="menu" aria-label="Más acciones"><button type="button" role="menuitem" (click)="openImageUpdate()"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 4.5-4.5 3 3 2.5-2.5 6 6" /></svg><span>Actualizar desde imagen</span></button></div> }
+          @if (moreActionsOpen()) { <div class="more-actions-menu" role="menu" aria-label="Más acciones">@if (!isReadOnly()) { <button type="button" role="menuitem" (click)="openImageUpdate()"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 4.5-4.5 3 3 2.5-2.5 6 6" /></svg><span>Actualizar desde imagen</span></button> }<button type="button" role="menuitem" (click)="analyzeDiagram()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5M8 10.5h5M10.5 8v5" /></svg><span>Analizar mi diagrama</span></button></div> }
         </div>
-      }
       <button class="btn btn-soft editor-action-button" type="button" title="Abrir chat del proyecto" aria-label="Abrir chat del proyecto" (click)="openChat()"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-8 7.5 8.3 8.3 0 0 1-3-.6L4 20l1.4-3.5A7.2 7.2 0 0 1 4 11.5 7.5 7.5 0 0 1 12 4a7.5 7.5 0 0 1 8 7.5Z" /></svg><span class="action-label">Chat</span></button>
       <app-export-menu [diagramId]="diagramId" />
       <button class="btn btn-primary editor-action-button editor-generator-button" type="button" title="Generar backend" aria-label="Generar backend" (click)="openGeneratorDialog()"><svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 5l-4 14" /></svg><span class="action-label">Generar backend</span></button>
@@ -65,7 +63,6 @@
       (pointercancel)="onCanvasPointerCancel($event)"
       (wheel)="onCanvasWheel($event)"
     >
-      <div class="live">● {{ collaborationStatus() === 'CONNECTED' ? 'En vivo' : 'Desconectado' }} · {{ onlineCollaborators().length }} colaboradores</div>
       <div class="canvas-actions viewport-controls" (click)="$event.stopPropagation()">
         <button class="btn btn-ghost" type="button" title="Alejar" (click)="zoomOut()">−</button>
         <button class="btn btn-ghost" type="button" title="Restablecer zoom" (click)="resetZoom()">{{ zoomPercent() }}%</button>
@@ -148,7 +145,9 @@
       @for (item of renderedClasses(); track item.umlClass.id) {
         <article
           class="uml-class"
+          [attr.data-class-id]="item.umlClass.id"
           [class.selected]="item.umlClass.id === selectedClassId()"
+          [style.box-shadow]="navigationHighlightId() === item.umlClass.id ? '0 0 0 5px #7053eb59' : null"
           [class.remote-selected]="remoteSelected('CLASS', item.umlClass.id)"
           [attr.title]="remoteSelectionNames('CLASS', item.umlClass.id)"
           [class.relation-source]="item.umlClass.id === relationSourceClassId()"
@@ -204,7 +203,7 @@
                   <button type="button" class="inline-member-cancel btn btn-ghost" aria-label="Cancelar edición de atributo" [disabled]="attributeSaving()" (click)="cancelAttributeEdit()">×</button>
                 </div>
               } @else {
-                <span class="inline-edit-trigger" [class.static-member]="isStatic(attribute)" (dblclick)="beginInlineAttributeEdit(item.umlClass.id, attribute.id, $event)"
+                <span class="inline-edit-trigger" [attr.data-attribute-id]="attribute.id" [style.box-shadow]="navigationHighlightId() === attribute.id ? '0 0 0 5px #7053eb59' : null" [class.static-member]="isStatic(attribute)" (dblclick)="beginInlineAttributeEdit(item.umlClass.id, attribute.id, $event)"
                   >{{ visibilitySymbol(attribute.visibility) }} {{ formatAttribute(attribute) }}
                   @if (attribute.primaryKey) {
                     <small class="pk">PK</small>
@@ -725,17 +724,141 @@
         </div>
       }
       @if (tab === 'IA') {
-        <div class="ai-panel">
-          <span class="section-label">Asistente de diseño</span>
-          <div class="bubble user">Crea una clase Cliente con nombre y correo</div>
-          <div class="bubble">
-            <b>IA</b> Se crearán:<br />· Cliente<br />· nombre: String<br />· correo: String
+        <div class="ai-panel analysis-panel">
+          <div class="ai-mode-selector" role="tablist" aria-label="Modo del asistente IA">
+            <button class="btn btn-soft ai-mode-tab" title="Validar UML" type="button" role="tab" [class.active]="aiMode() === 'VALIDATE'" [attr.aria-selected]="aiMode() === 'VALIDATE'" (click)="setAiMode('VALIDATE')">Validar</button>
+            <button class="btn btn-soft ai-mode-tab" title="Sugerir mejoras" type="button" role="tab" [class.active]="aiMode() === 'SUGGEST'" [attr.aria-selected]="aiMode() === 'SUGGEST'" (click)="setAiMode('SUGGEST')">Mejorar</button>
+            <button class="btn btn-soft ai-mode-tab" title="Preparar cambios" type="button" role="tab" [class.active]="aiMode() === 'PROPOSE'" [attr.aria-selected]="aiMode() === 'PROPOSE'" (click)="setAiMode('PROPOSE')">Cambios</button>
           </div>
-          <div class="ai-actions">
-            <button class="btn btn-soft">Simular</button
-            ><button class="btn btn-primary">Aplicar</button
-            ><button class="btn btn-ghost">Cancelar</button>
-          </div>
+          @if (aiMode() === 'VALIDATE') {
+          <div class="analysis-heading"><div><span class="section-label">Análisis UML</span><h2>Analizar mi diagrama</h2></div><button class="btn btn-ghost analysis-close" type="button" aria-label="Cerrar análisis" (click)="closeAnalysis()">×</button></div>
+          @if (!analysisOpen()) {
+            <p class="muted">Revisa estructura, relaciones y convenciones del diagrama con la IA.</p>
+            <button class="btn btn-primary" type="button" [disabled]="analysisLoading()" (click)="analyzeDiagram()">Analizar mi diagrama</button>
+          } @else if (analysisLoading()) {
+            <div class="analysis-state" role="status"><span class="analysis-spinner" aria-hidden="true"></span><b>Analizando diagrama...</b><small>El editor y el chat siguen disponibles.</small></div>
+          } @else if (analysisError()) {
+            <div class="analysis-state analysis-error" role="alert"><b>No se pudo completar el análisis</b><p>{{ analysisError() }}</p><button class="btn btn-primary" type="button" (click)="retryAnalysis()">Reintentar</button></div>
+          } @else if (analysisResult(); as result) {
+            <div class="analysis-result">
+            <div class="analysis-summary"><div><span class="section-label">Resumen</span><p>{{ result.summary || 'No se generó un resumen.' }}</p></div><span class="finding-count">{{ result.findings.length }} {{ result.findings.length === 1 ? 'hallazgo' : 'hallazgos' }}</span></div>
+            @if (analysisStale()) { <div class="analysis-stale" role="status">El diagrama cambió; estos resultados podrían estar desactualizados.</div> }
+            <div class="analysis-counts"><span class="severity-chip error">{{ analysisCounts().ERROR }} Error</span><span class="severity-chip warning">{{ analysisCounts().WARNING }} Advertencia{{ analysisCounts().WARNING === 1 ? '' : 's' }}</span><span class="severity-chip info">{{ analysisCounts().INFO }} Info</span></div>
+            @if (analysisFindings().length === 0) {
+              <div class="analysis-state empty"><b>No se encontraron hallazgos</b><small>El análisis no detectó problemas verificables.</small></div>
+            } @else {
+              <div class="analysis-findings" aria-label="Hallazgos del análisis">
+                @for (finding of analysisFindings(); track $index) {
+                  <article class="analysis-finding" [class.finding-error]="finding.severity === 'ERROR'" [class.finding-warning]="finding.severity === 'WARNING'">
+                    <div class="finding-topline"><span class="severity-chip" [class.error]="finding.severity === 'ERROR'" [class.warning]="finding.severity === 'WARNING'" [class.info]="finding.severity === 'INFO'">{{ analysisSeverityLabel(finding.severity) }}</span><span class="finding-category">{{ analysisCategoryLabel(finding.category) }}</span></div>
+                    <h3>{{ finding.title }}</h3><p>{{ finding.description }}</p>
+                    @if (finding.suggestion) { <div class="finding-suggestion"><b>Recomendación</b><span>{{ finding.suggestion }}</span></div> }
+                    <div class="finding-footer"><small>{{ analysisElementName(finding.elementId) }}</small>@if (analysisElementSelectable(finding.elementId)) { <button class="btn btn-ghost" type="button" (click)="selectAnalysisElement(finding)">Ver elemento</button> }</div>
+                  </article>
+                }
+              </div>
+            }
+            <button class="btn btn-soft analysis-retry" type="button" [disabled]="analysisLoading()" (click)="retryAnalysis()">Repetir análisis</button>
+            </div>
+          } @else {
+            <p class="muted">Aún no hay resultados. Ejecuta un análisis cuando quieras revisar el diagrama.</p><button class="btn btn-primary" type="button" (click)="analyzeDiagram()">Analizar mi diagrama</button>
+          }
+          } @else if (aiMode() === 'SUGGEST') {
+            <section class="ai-suggestions" aria-live="polite">
+              <div class="analysis-heading"><div><span class="section-label">Asistente IA</span><h2>Sugerencias de mejora</h2></div></div>
+              <p class="muted">Recomendaciones opcionales; no modifican el diagrama.</p>
+              @if (!suggestionsOpen()) {
+                <div class="analysis-state empty"><b>Aún no hay sugerencias</b><small>Genera recomendaciones cuando quieras explorar mejoras.</small><button class="btn btn-primary" type="button" [disabled]="suggestionsLoading()" (click)="suggestImprovements()">Generar sugerencias</button></div>
+              } @else if (suggestionsLoading()) {
+                <div class="analysis-state" role="status"><span class="analysis-spinner" aria-hidden="true"></span><b>Generando sugerencias...</b><small>El editor y el chat siguen disponibles.</small></div>
+              } @else if (suggestionsError()) {
+                <div class="analysis-state analysis-error" role="alert"><b>No se pudieron generar sugerencias</b><p>{{ suggestionsError() }}</p><button class="btn btn-primary" type="button" (click)="retrySuggestions()">Reintentar</button></div>
+              } @else if (suggestionsResult(); as suggestions) {
+                <div class="analysis-summary"><div><span class="section-label">Resultado</span><p>{{ suggestions.summary }}</p></div><span class="finding-count">{{ suggestions.suggestions.length }} {{ suggestions.suggestions.length === 1 ? 'sugerencia' : 'sugerencias' }}</span></div>
+                @if (suggestionsStale()) { <div class="analysis-stale" role="status">El diagrama cambió; estas sugerencias podrían estar desactualizadas.</div> }
+                @if (suggestions.suggestions.length === 0) {
+                  <div class="analysis-state empty"><b>No hay sugerencias</b><small>No se identificaron mejoras opcionales verificables.</small></div>
+                } @else {
+                  <div class="analysis-findings" aria-label="Sugerencias de mejora">
+                    @for (suggestion of suggestions.suggestions; track suggestion.id) {
+                      <article class="analysis-finding suggestion-card">
+                        <div class="finding-topline"><span class="finding-category">{{ suggestionCategoryLabel(suggestion.category) }}</span>@if (suggestion.requiresBusinessContext) { <span class="suggestion-context">Requiere contexto</span> }</div>
+                        <h3>{{ suggestion.title }}</h3><p>{{ suggestion.reason }}</p>
+                        <div class="finding-suggestion"><b>Propuesta opcional</b><span>{{ suggestion.proposal }}</span></div>
+                        @if (suggestion.elementId) { <div class="finding-footer"><small>{{ analysisElementName(suggestion.elementId) }}</small><button class="btn btn-ghost" type="button" (click)="selectSuggestion(suggestion)">Ver elemento</button></div> }
+                      </article>
+                    }
+                  </div>
+                }
+                <button class="btn btn-soft analysis-retry" type="button" [disabled]="suggestionsLoading()" (click)="retrySuggestions()">Generar nuevamente</button>
+              }
+            </section>
+          } @else {
+            <section class="ai-suggestions" aria-live="polite">
+              <div class="analysis-heading"><div><span class="section-label">Asistente IA</span><h2>Preparar cambios</h2></div></div>
+              @if (!changeProposalResult() || changeProposalFormOpen()) {
+                <label class="change-proposal-instruction" for="change-proposal-target-class">
+                  <span>Clase objetivo (opcional)</span>
+                  <select id="change-proposal-target-class" [value]="changeProposalTargetClassId() === undefined ? (selectedClassId() ?? '') : (changeProposalTargetClassId() ?? '')" (change)="setChangeProposalTargetClass($any($event.target).value || null)">
+                    <option value="">Elegir después / ninguna</option>
+                    @for (umlClass of changeProposalTargetClasses(); track umlClass.id) { <option [value]="umlClass.id" [selected]="(changeProposalTargetClassId() === undefined ? selectedClassId() : changeProposalTargetClassId()) === umlClass.id">{{ umlClass.name }}</option> }
+                  </select>
+                </label>
+                @if (changeProposalTargetClass(); as targetClass) {
+                  <div class="analysis-summary proposal-target-chip"><span>Clase seleccionada: <strong>{{ targetClass.name }}</strong></span><button class="btn btn-ghost" type="button" (click)="clearChangeProposalTargetClass()">Quitar</button></div>
+                  <button class="btn btn-soft" type="button" [disabled]="changeProposalLoading()" (click)="suggestAttributesForSelectedClass()">Sugerir atributos</button>
+                }
+                <p class="muted">Escribe una instrucción explícita. Solo se prepara una vista previa; el diagrama no se modifica.</p>
+                @if (!changeProposalCustomInstructionOpen()) {
+                  <button class="btn btn-soft custom-instruction-trigger" type="button" [disabled]="changeProposalLoading()" (click)="openCustomChangeInstruction()">Escribir instrucción personalizada</button>
+                } @else {
+                <label class="change-proposal-instruction" for="change-proposal-instruction">
+                  <span>¿Qué cambio quieres revisar?</span>
+                  <textarea id="change-proposal-instruction" rows="3" maxlength="1000" [value]="changeProposalInstruction()" (input)="changeProposalInstruction.set($any($event.target).value)" placeholder="Ej. Propón agregar fecha de tipo Date a Pedido."></textarea>
+                </label>
+                <button class="btn btn-primary" type="button" [disabled]="changeProposalLoading()" (click)="prepareChanges()">{{ changeProposalLoading() ? 'Preparando...' : 'Preparar propuesta' }}</button>
+                }
+              } @else {
+                <div class="analysis-summary change-proposal-request"><div><span class="section-label">Instrucción consultada</span><p>{{ changeProposalSubmittedInstruction() }}</p></div><button class="btn btn-ghost" type="button" (click)="editChangeInstruction()">Editar instrucción</button></div>
+              }
+              @if (changeProposalError()) {
+                <div class="analysis-state analysis-error" role="alert"><b>No se pudo preparar la propuesta</b><p>{{ changeProposalError() }}</p><button class="btn btn-primary" type="button" [disabled]="changeProposalLoading()" (click)="retryChangeProposals()">Reintentar</button></div>
+              } @else if (changeProposalLoading()) {
+                <div class="analysis-state" role="status"><span class="analysis-spinner" aria-hidden="true"></span><b>Preparando propuesta...</b><small>El editor y el chat siguen disponibles.</small></div>
+              } @else if (changeProposalResult(); as result) {
+                <div class="analysis-summary"><div><span class="section-label">Vista previa</span><p>{{ result.proposals.length ? 'Revisa la propuesta antes de cualquier futura aplicación.' : 'No se generaron propuestas para esta instrucción.' }}</p></div><span class="finding-count">{{ result.proposals.length }} {{ result.proposals.length === 1 ? 'propuesta' : 'propuestas' }}</span></div>
+                @if (changeProposalInstructionChanged()) { <div class="analysis-stale" role="status">La instrucción cambió; esta vista previa corresponde al texto anterior.</div> }
+                <div class="proposal-version">Versión consultada: {{ result.diagramVersion }}</div>
+                @if (changeProposalStale()) { <div class="analysis-stale" role="status">El diagrama cambió; esta vista previa ya no representa el estado actual.</div> }
+                @if (!result.proposals.length) {
+                  <div class="analysis-state empty"><b>Sin propuestas</b><small>La instrucción puede ser ambigua o no corresponder a una operación permitida.</small></div>
+                } @else {
+                  <div class="analysis-findings" aria-label="Propuestas de cambio UML">
+                    @for (proposal of result.proposals; track proposal.proposalId) {
+                      <article class="analysis-finding change-proposal-card">
+                        <div class="finding-topline"><span class="severity-chip info">Vista previa</span><span class="finding-category">{{ changeOperationLabel(proposal.operation) }}</span></div>
+                        <h3>{{ proposal.targetElementName }}</h3>
+                        <label class="proposal-selection"><input type="checkbox" [checked]="changeProposalEdit(proposal).selected" (change)="toggleChangeProposal(proposal)" /> Revisar esta propuesta</label>
+                        @if (proposal.operation === 'ADD_ATTRIBUTE' || proposal.operation === 'RENAME_ATTRIBUTE') {
+                          <label class="proposal-editor-field"><span>Nombre</span><input [value]="changeProposalEdit(proposal).name" (input)="updateChangeProposalName(proposal, $any($event.target).value)" /></label>
+                        } @else { <p><strong>Atributo:</strong> {{ changeProposalAttributeName(proposal) }}</p> }
+                        @if (proposal.operation === 'ADD_ATTRIBUTE' || proposal.operation === 'CHANGE_ATTRIBUTE_TYPE') {
+                          <label class="proposal-editor-field"><span>Tipo</span><select [value]="changeProposalEdit(proposal).type" (change)="updateChangeProposalType(proposal, $any($event.target).value)">@for (type of supportedChangeProposalTypes; track type) { <option [value]="type">{{ type }}</option> }</select></label>
+                        }
+                        @if (proposal.oldValue) { <p class="proposal-value"><span>Actual</span><code>{{ proposal.oldValue }}</code></p> }
+                        @if (proposal.newValue) { <p class="proposal-value"><span>Nuevo</span><code>{{ changeProposalDisplayNewValue(proposal) }}</code></p> }
+                        <p>{{ proposal.reason }}</p>
+                        <button class="btn btn-ghost" type="button" (click)="discardChangeProposal(proposal)">{{ changeProposalEdit(proposal).discarded ? 'Descartada' : 'Descartar' }}</button>
+                        @if (proposal.requiresBusinessConfirmation) { <div class="suggestion-context">Requiere confirmar los requisitos del negocio.</div> }
+                         <div class="finding-footer"><small>Versión {{ result.diagramVersion }}</small><button class="btn btn-ghost" type="button" (click)="selectChangeProposalElement(proposal)">Ver elemento</button></div>
+                      </article>
+                    }
+                  </div>
+                }
+                <button class="btn btn-soft analysis-retry" type="button" [disabled]="changeProposalLoading()" (click)="retryChangeProposals()">Generar nuevamente</button>
+              }
+            </section>
+          }
         </div>
       }
       @if (tab === 'Historial') {
@@ -1040,5 +1163,5 @@
   (membersChanged)="projectMembers.set($event)"
 ></app-share-project-modal>
 @if (chatOpen() && diagram()?.projectId; as projectId) {
-  <app-project-chat [projectId]="projectId" [canManageMemory]="currentUserRole() !== 'VIEWER'" (close)="chatOpen.set(false)"></app-project-chat>
+  <app-project-chat [projectId]="projectId" [diagramId]="diagramId" [diagramVersion]="diagram()?.version ?? null" [canManageMemory]="currentUserRole() !== 'VIEWER'" (close)="chatOpen.set(false)"></app-project-chat>
 }

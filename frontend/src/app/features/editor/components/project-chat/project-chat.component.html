@@ -10,6 +10,12 @@
     <button type="button" [class.active]="privateChat()" [attr.aria-selected]="privateChat()" (click)="setMode(true)">Privado con IA</button>
   </nav>
 
+  <div class="chat-context-picker" role="group" aria-label="Alcance del contexto UML">
+    <span>Contexto IA</span>
+    <button type="button" [class.active]="contextScope() === 'DIAGRAM'" [disabled]="!diagramId()" (click)="setContextScope('DIAGRAM')">Diagrama actual</button>
+    <button type="button" [class.active]="contextScope() === 'PROJECT'" (click)="setContextScope('PROJECT')">Proyecto completo</button>
+  </div>
+
   @if (memoryOpen()) { <section class="chat-memory" aria-labelledby="chat-memory-title">
     <div class="chat-memory-heading"><div><span class="eyebrow">Contexto persistente</span><h3 id="chat-memory-title">Memoria</h3></div><span class="chat-memory-scope">{{ memoryScope() === 'PROJECT' ? 'Proyecto' : 'Privada' }}</span></div>
     <div class="chat-memory-tabs" role="tablist" aria-label="Ámbito de memoria">
@@ -36,7 +42,7 @@
       @if (showDayDivider($index)) { <div class="chat-day-divider"><span>{{ message.createdAt | date:'longDate' }}</span></div> }
       <article class="chat-message" [class.chat-message-own]="isOwnMessage(message)" [class.chat-message-other]="!isOwnMessage(message)" [class.chat-message-grouped]="!messageGroupStarts($index)" [class.ai-message]="message.authorType === 'AI'">
         @if (messageGroupStarts($index)) { <div class="chat-message-meta"><span class="chat-author"><span class="chat-avatar" aria-hidden="true">{{ messageInitials(message) }}</span><strong>{{ message.authorName }}</strong></span><time>{{ message.createdAt | date:'HH:mm' }}</time></div> }
-        <p>{{ message.content }}</p>
+        <div class="chat-message-content" [innerHTML]="renderMessage(message.content)"></div>
       </article>
     } @empty { @if (!loading()) { <div class="chat-state">Aún no hay mensajes.</div> } }
   </div>

@@ -14,6 +14,10 @@ import { ImageImportService } from '../../services/image-import.service';
 import { ImageUpdateService } from '../../services/image-update.service';
 import { EditorPageComponent } from './editor-page.component';
 import { ProjectService } from '../../../projects/services/project.service';
+import { AiAnalysisService } from '../../services/ai-analysis.service';
+import { AiSuggestionsService } from '../../services/ai-suggestions.service';
+import { AiChangeProposalsService } from '../../services/ai-change-proposals.service';
+import { AiChangeProposal } from '../../models/ai-change-proposal.model';
 
 const detail: DiagramDetail = {
   id: 'd1',
@@ -26,7 +30,7 @@ const detail: DiagramDetail = {
   viewState: { diagramId: 'd1', nodes: [], relations: [] },
 };
 
-function configure(operationService: object, current = detail, xmiImport: object = {}, imageImport: object = {}, projectApi: object = { getMyRole: () => of({ role: 'OWNER' }), getMembers: () => of([]) }, aiVoice: object = { interpret: () => NEVER }, imageUpdate: object = { preview: () => NEVER, apply: () => NEVER }): Promise<void> {
+function configure(operationService: object, current = detail, xmiImport: object = {}, imageImport: object = {}, projectApi: object = { getMyRole: () => of({ role: 'OWNER' }), getMembers: () => of([]) }, aiVoice: object = { interpret: () => NEVER }, imageUpdate: object = { preview: () => NEVER, apply: () => NEVER }, aiAnalysis: object = { analyze: () => NEVER }, aiSuggestions: object = { suggest: () => NEVER }, aiChangeProposals: object = { propose: () => NEVER }): Promise<void> {
   return TestBed.configureTestingModule({
     imports: [EditorPageComponent],
     providers: [
@@ -35,6 +39,9 @@ function configure(operationService: object, current = detail, xmiImport: object
       { provide: XmiImportService, useValue: { preview: () => NEVER, apply: () => NEVER, ...xmiImport } },
       { provide: ImageImportService, useValue: { preview: () => NEVER, apply: () => NEVER, ...imageImport } },
       { provide: ImageUpdateService, useValue: imageUpdate },
+      { provide: AiAnalysisService, useValue: aiAnalysis },
+      { provide: AiSuggestionsService, useValue: aiSuggestions },
+      { provide: AiChangeProposalsService, useValue: aiChangeProposals },
       { provide: AiVoiceCommandService, useValue: aiVoice },
       { provide: ProjectService, useValue: projectApi },
       provideRouter([]),
@@ -44,6 +51,324 @@ function configure(operationService: object, current = detail, xmiImport: object
 }
 
 describe('EditorPageComponent', () => {
+  it('opens analysis in the IA panel and uses the project id from the loaded diagram', async () => {
+    let analyzedProjectId = '';
+    await configure({ execute: () => NEVER }, detail, {}, {}, undefined, undefined, undefined, {
+      analyze: (projectId: string) => { analyzedProjectId = projectId; return of({ projectId, summary: 'Todo correcto', findings: [] }); },
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.analyzeDiagram();
+
+    expect(analyzedProjectId).toBe('p1');
+    expect(page.analysisOpen()).toBe(true);
+    expect(page.analysisResult()?.findings).toEqual([]);
+    expect(page.analysisStale()).toBe(false);
+  });
+
+  it('does not start a second analysis while the first request is pending', async () => {
+    let calls = 0;
+    await configure({ execute: () => NEVER }, detail, {}, {}, undefined, undefined, undefined, {
+      analyze: () => { calls++; return NEVER; },
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.analyzeDiagram();
+    page.analyzeDiagram();
+
+    expect(calls).toBe(1);
+    expect(page.analysisLoading()).toBe(true);
+  });
+
+  it('orders findings by severity and marks results stale only after canonical changes', async () => {
+    await configure({ execute: () => NEVER }, detail, {}, {}, undefined, undefined, undefined, {
+      analyze: (projectId: string) => of({ projectId, summary: 'Revisar', findings: [
+        { severity: 'INFO', category: 'GENERAL', elementId: null, title: 'i', description: 'i', suggestion: null },
+        { severity: 'ERROR', category: 'CONSISTENCY', elementId: null, title: 'e', description: 'e', suggestion: null },
+        { severity: 'WARNING', category: 'MULTIPLICITY', elementId: null, title: 'w', description: 'w', suggestion: null },
+      ] }),
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.analyzeDiagram();
+    expect(page.analysisFindings().map((finding) => finding.severity)).toEqual(['ERROR', 'WARNING', 'INFO']);
+    expect(page.analysisStale()).toBe(false);
+    page.diagram.update((value) => value ? { ...value, canonicalModel: { ...value.canonicalModel, name: 'Cambio estructural' } } : value);
+    expect(page.analysisStale()).toBe(true);
+  });
+
+  it('reuses editor selection state for analysis classes and relations', async () => {
+    const current = diagramWithTwoClassesAndRelation();
+    await configure({ execute: () => NEVER }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.selectAnalysisElement({ severity: 'WARNING', category: 'GENERAL', elementId: 'c1', title: 'Clase', description: 'Revisar', suggestion: null });
+    expect(page.selectedClassId()).toBe('c1');
+    expect(page.selectedRelationId()).toBeNull();
+    page.selectAnalysisElement({ severity: 'WARNING', category: 'GENERAL', elementId: 'r1', title: 'Relación', description: 'Revisar', suggestion: null });
+    expect(page.selectedRelationId()).toBe('r1');
+    page.selectAnalysisElement({ severity: 'WARNING', category: 'GENERAL', elementId: 'removed', title: 'Antiguo', description: 'Revisar', suggestion: null });
+    expect(page.selectedRelationId()).toBe('r1');
+  });
+
+  it('translates analysis categories and keeps recommendation content separate', async () => {
+    await configure({ execute: () => NEVER });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    expect(page.analysisCategoryLabel('RELATIONSHIP')).toBe('Relaciones');
+    expect(page.analysisCategoryLabel('MULTIPLICITY')).toBe('Multiplicidades');
+    expect(page.suggestionCategoryLabel('ATTRIBUTE')).toBe('Atributos');
+    expect(page.suggestionCategoryLabel('GENERAL')).toBe('General');
+  });
+
+  it('switches IA modes without making a request and keeps each mode result', async () => {
+    let calls = 0;
+    await configure({ execute: () => NEVER }, detail, {}, {}, undefined, undefined, undefined, undefined, {
+      suggest: () => { calls++; return NEVER; },
+    });
+    const fixture = TestBed.createComponent(EditorPageComponent);
+    const page = fixture.componentInstance;
+    page.tab = 'IA';
+    page.analysisOpen.set(true);
+    page.analysisResult.set({ projectId: 'p1', summary: 'Validado', findings: [] });
+    page.suggestionsOpen.set(true);
+    page.suggestionsResult.set({ summary: 'Una sugerencia', suggestions: [] });
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelectorAll('.ai-mode-tab')[1] as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(calls).toBe(0);
+    expect(page.aiMode()).toBe('SUGGEST');
+    expect(fixture.nativeElement.querySelector('.ai-suggestions')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.analysis-result')).toBeNull();
+
+    (fixture.nativeElement.querySelectorAll('.ai-mode-tab')[0] as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(page.aiMode()).toBe('VALIDATE');
+    expect(fixture.nativeElement.querySelector('.analysis-result')).not.toBeNull();
+  });
+
+  it('sends the instruction with the loaded project and diagram ids', async () => {
+    let request: { projectId: string; diagramId: string; instruction: string } | null = null;
+    await configure({ execute: () => NEVER }, detail, {}, {}, undefined, undefined, undefined, undefined, undefined, {
+      propose: (projectId: string, diagramId: string, instruction: string) => {
+        request = { projectId, diagramId, instruction };
+        return of({ projectId, diagramId, diagramVersion: 7, proposals: [], isStale: false });
+      },
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.changeProposalInstruction.set('Propón agregar fecha Date a Pedido');
+    page.prepareChanges();
+
+    expect(request).toEqual({ projectId: 'p1', diagramId: 'd1', instruction: 'Propón agregar fecha Date a Pedido' });
+    expect(page.changeProposalResult()?.proposals).toEqual([]);
+  });
+
+  it('renders typed change proposal details without applying an UML operation', async () => {
+    let operationCalls = 0;
+    const current = { ...detail, canonicalModel: { ...detail.canonicalModel, classes: [{ id: 'class-1', name: 'Pedido', isAbstract: false, attributes: [], methods: [] }] } };
+    await configure({ execute: () => { operationCalls++; return NEVER; } }, current, {}, {}, undefined, undefined, undefined, undefined, undefined, {
+      propose: () => of({ projectId: 'p1', diagramId: 'd1', diagramVersion: 7, isStale: false, proposals: [{
+        proposalId: 'proposal-1', operation: 'ADD_ATTRIBUTE', targetElementId: 'class-1', targetElementName: 'Pedido', targetAttributeId: null,
+        oldValue: null, newValue: 'fecha: Date', reason: 'La instrucción lo solicita', requiresBusinessConfirmation: true,
+      }] }),
+    });
+    const fixture = TestBed.createComponent(EditorPageComponent);
+    const page = fixture.componentInstance;
+    page.tab = 'IA';
+    page.aiMode.set('PROPOSE');
+    page.changeProposalInstruction.set('Agregar fecha');
+    page.prepareChanges();
+    fixture.detectChanges();
+
+    expect(page.changeOperationLabel('ADD_ATTRIBUTE')).toBe('Agregar atributo');
+    expect(page.changeProposalAttributeName(page.changeProposalResult()!.proposals[0])).toBe('fecha');
+    expect(operationCalls).toBe(0);
+    expect(fixture.nativeElement.textContent).toContain('Vista previa');
+    expect(fixture.nativeElement.textContent).toContain('Requiere confirmar los requisitos');
+  });
+
+  it('locates the containing class for an ADD_ATTRIBUTE proposal without applying it', async () => {
+    const current = { ...detail, canonicalModel: { ...detail.canonicalModel, classes: [{
+      id: 'class-1', name: 'Cliente', isAbstract: false,
+      attributes: [], methods: [],
+    }] } };
+    await configure({ execute: () => NEVER }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    const beforeVersion = page.diagram()?.version;
+    page.changeProposalResult.set({ projectId: 'p1', diagramId: 'd1', diagramVersion: 7, isStale: false, proposals: [] });
+    page.changeProposalResult.set({ projectId: 'p1', diagramId: 'd1', diagramVersion: 7, isStale: false, proposals: [{
+      proposalId: 'proposal-1', operation: 'ADD_ATTRIBUTE', targetElementId: 'class-1', targetElementName: 'Cliente',
+      targetAttributeId: null, oldValue: null, newValue: 'email: String', reason: 'Revisar', requiresBusinessConfirmation: true,
+    }] });
+
+    page.selectChangeProposalElement(page.changeProposalResult()!.proposals[0]);
+
+    expect(page.selectedClassId()).toBe('class-1');
+    expect(page.selectedRelationId()).toBeNull();
+    expect(page.navigationHighlightId()).toBe('class-1');
+    expect(page.diagram()?.version).toBe(beforeVersion);
+  });
+
+  it('locates an existing proposed attribute through its containing class', async () => {
+    const current = { ...detail, canonicalModel: { ...detail.canonicalModel, classes: [{
+      id: 'class-1', name: 'Cliente', isAbstract: false,
+      attributes: [{ id: 'attribute-1', name: 'email', type: 'String', visibility: 'PUBLIC', isStatic: false, isFinal: false, defaultValue: null, primaryKey: false }], methods: [],
+    }] } };
+    await configure({ execute: () => NEVER }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.changeProposalResult.set({ projectId: 'p1', diagramId: 'd1', diagramVersion: 7, isStale: false, proposals: [{
+      proposalId: 'proposal-1', operation: 'RENAME_ATTRIBUTE', targetElementId: 'class-1', targetElementName: 'Cliente',
+      targetAttributeId: 'attribute-1', oldValue: 'email', newValue: 'correo', reason: 'Revisar', requiresBusinessConfirmation: true,
+    }] });
+
+    page.selectChangeProposalElement(page.changeProposalResult()!.proposals[0]);
+
+    expect(page.selectedClassId()).toBe('class-1');
+    expect(page.navigationHighlightId()).toBe('attribute-1');
+  });
+
+  it('does not navigate a proposal belonging to another diagram', async () => {
+    const current = { ...detail, canonicalModel: { ...detail.canonicalModel, classes: [{ id: 'class-1', name: 'Cliente', isAbstract: false, attributes: [], methods: [] }] } };
+    await configure({ execute: () => NEVER }, current);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.changeProposalResult.set({ projectId: 'p1', diagramId: 'other-diagram', diagramVersion: 7, isStale: false, proposals: [{
+      proposalId: 'proposal-1', operation: 'ADD_ATTRIBUTE', targetElementId: 'class-1', targetElementName: 'Cliente',
+      targetAttributeId: null, oldValue: null, newValue: 'email: String', reason: 'Revisar', requiresBusinessConfirmation: true,
+    }] });
+
+    page.selectChangeProposalElement(page.changeProposalResult()!.proposals[0]);
+
+    expect(page.selectedClassId()).toBeNull();
+    expect(page.error()).toContain('otro diagrama');
+  });
+
+  it('sends the selected class id for contextual attribute suggestions', async () => {
+    const current = { ...detail, canonicalModel: { ...detail.canonicalModel, classes: [{ id: 'class-1', name: 'Pedido', isAbstract: false, attributes: [], methods: [] }] } };
+    let targetId: string | null | undefined;
+    await configure({ execute: () => NEVER }, current, {}, {}, undefined, undefined, undefined, undefined, undefined, {
+      propose: (_projectId: string, _diagramId: string, _instruction: string, receivedTargetId: string | null) => {
+        targetId = receivedTargetId;
+        return of({ projectId: 'p1', diagramId: 'd1', diagramVersion: 7, proposals: [], isStale: false });
+      },
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.selectedClassId.set('class-1');
+    page.suggestAttributesForSelectedClass();
+
+    expect(targetId).toBe('class-1');
+    expect(page.changeProposalInstruction()).toContain('Pedido');
+  });
+
+  it('allows local editing and discarding without executing UML operations', async () => {
+    const proposal: AiChangeProposal = {
+      proposalId: 'proposal-1', operation: 'ADD_ATTRIBUTE', targetElementId: 'class-1', targetElementName: 'Pedido',
+      targetAttributeId: null, oldValue: null, newValue: 'codigo: String', reason: 'Revisar', requiresBusinessConfirmation: true,
+    };
+    await configure({ execute: () => { throw new Error('must not execute'); } }, detail);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.changeProposalResult.set({ projectId: 'p1', diagramId: 'd1', diagramVersion: 7, proposals: [proposal], isStale: false });
+    page.updateChangeProposalName(proposal, 'codigoPedido');
+    page.updateChangeProposalType(proposal, 'Long');
+    expect(page.changeProposalDisplayNewValue(proposal)).toBe('codigoPedido: Long');
+    page.discardChangeProposal(proposal);
+    expect(page.changeProposalEdit(proposal).discarded).toBe(true);
+  });
+
+  it('marks a received proposal stale after the local canonical model changes', async () => {
+    await configure({ execute: () => NEVER }, detail, {}, {}, undefined, undefined, undefined, undefined, undefined, {
+      propose: () => of({ projectId: 'p1', diagramId: 'd1', diagramVersion: 7, proposals: [], isStale: false }),
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.changeProposalInstruction.set('Agregar fecha');
+    page.prepareChanges();
+    expect(page.changeProposalStale()).toBe(false);
+    page.diagram.update(value => value ? { ...value, canonicalModel: { ...value.canonicalModel, name: 'Cambio' } } : value);
+    expect(page.changeProposalStale()).toBe(true);
+  });
+
+  it('renders multiple proposal cards inside the internal results region', async () => {
+    await configure({ execute: () => NEVER }, detail);
+    const fixture = TestBed.createComponent(EditorPageComponent);
+    const page = fixture.componentInstance;
+    page.tab = 'IA';
+    page.aiMode.set('PROPOSE');
+    page.changeProposalResult.set({
+      projectId: 'p1', diagramId: 'd1', diagramVersion: 7, isStale: false,
+      proposals: Array.from({ length: 3 }, (_, index) => ({
+        proposalId: `proposal-${index}`, operation: 'ADD_ATTRIBUTE', targetElementId: 'class-1', targetElementName: 'Pedido',
+        targetAttributeId: null, oldValue: null, newValue: `campo${index}: String`, reason: 'Revisar', requiresBusinessConfirmation: true,
+      })),
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('.change-proposal-card').length).toBe(3);
+    expect(fixture.nativeElement.querySelector('.ai-suggestions .analysis-findings')).not.toBeNull();
+  });
+
+  it('collapses the proposal form after a result and allows editing it again', async () => {
+    const current = { ...detail, canonicalModel: { ...detail.canonicalModel, classes: [{ id: 'class-1', name: 'Pedido', isAbstract: false, attributes: [], methods: [] }] } };
+    await configure({ execute: () => NEVER }, current, {}, {}, undefined, undefined, undefined, undefined, undefined, {
+      propose: () => of({ projectId: 'p1', diagramId: 'd1', diagramVersion: 7, isStale: false, proposals: [{
+        proposalId: 'proposal-1', operation: 'ADD_ATTRIBUTE', targetElementId: 'class-1', targetElementName: 'Pedido', targetAttributeId: null,
+        oldValue: null, newValue: 'codigoPedido: String', reason: 'Solicitud explícita', requiresBusinessConfirmation: true,
+      }] }),
+    });
+    const fixture = TestBed.createComponent(EditorPageComponent);
+    const page = fixture.componentInstance;
+    page.tab = 'IA';
+    page.aiMode.set('PROPOSE');
+    page.changeProposalInstruction.set('Agregar codigoPedido');
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.custom-instruction-trigger') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#change-proposal-instruction')).not.toBeNull();
+
+    page.prepareChanges();
+    fixture.detectChanges();
+    expect(page.changeProposalFormOpen()).toBe(false);
+    expect(fixture.nativeElement.querySelector('.change-proposal-card')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#change-proposal-instruction')).toBeNull();
+
+    (fixture.nativeElement.querySelector('.change-proposal-request button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(page.changeProposalFormOpen()).toBe(true);
+    expect(fixture.nativeElement.querySelector('#change-proposal-instruction')).not.toBeNull();
+  });
+
+  it('marks suggestions stale after the canonical model changes', async () => {
+    await configure({ execute: () => NEVER }, detail, {}, {}, undefined, undefined, undefined, undefined, {
+      suggest: () => of({ projectId: 'p1', diagramId: 'd1', summary: 'Revisar', suggestions: [] }),
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.suggestImprovements();
+    expect(page.suggestionsStale()).toBe(false);
+    page.diagram.update((value) => value ? { ...value, canonicalModel: { ...value.canonicalModel, name: 'Cambio' } } : value);
+    expect(page.suggestionsStale()).toBe(true);
+  });
+
+  it('keeps analysis findings inside a dedicated scroll region with a visible retry action', async () => {
+    await configure({ execute: () => NEVER });
+    const fixture = TestBed.createComponent(EditorPageComponent);
+    const page = fixture.componentInstance;
+    page.tab = 'IA';
+    page.analysisOpen.set(true);
+    page.analysisResult.set({
+      projectId: 'p1',
+      summary: 'Revisar',
+      findings: Array.from({ length: 5 }, (_, index) => ({
+        severity: 'INFO', category: 'GENERAL', elementId: null,
+        title: `Hallazgo ${index}`, description: 'Detalle', suggestion: null,
+      })),
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.analysis-result')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.analysis-findings')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.analysis-retry')).not.toBeNull();
+  });
+
   it('does not apply an image preview with no operations', async () => {
     let applied = false;
     await configure({ execute: () => NEVER }, detail, {}, {}, undefined, undefined, { preview: () => NEVER, apply: () => { applied = true; return NEVER; } });

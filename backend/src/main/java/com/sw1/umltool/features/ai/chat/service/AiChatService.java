@@ -7,6 +7,7 @@ import com.sw1.umltool.features.ai.chat.dto.SendAiMessageRequest;
 import com.sw1.umltool.features.ai.chat.exception.AiConversationNotFoundException;
 import com.sw1.umltool.features.ai.chat.model.AiConversationEntity;
 import com.sw1.umltool.features.ai.chat.model.AiConversationType;
+import com.sw1.umltool.features.ai.chat.model.AiContextScope;
 import com.sw1.umltool.features.ai.chat.model.AiMessageAuthorType;
 import com.sw1.umltool.features.ai.chat.model.AiMessageEntity;
 import com.sw1.umltool.features.ai.chat.repository.AiConversationRepository;
@@ -137,7 +138,7 @@ public class AiChatService {
                         .clientMessageId(clientMessageId)
                         .createdAt(now)
                         .build());
-                if (shouldInvokeAi(conversation, content)) requestAiAfterCommit(saved, conversation, userId, content);
+                if (shouldInvokeAi(conversation, content)) requestAiAfterCommit(saved, conversation, userId, content, request);
                 return new MessageSaveResult(saved, true);
             }
         } finally {
@@ -149,9 +150,16 @@ public class AiChatService {
         return conversation.getType() == AiConversationType.PRIVATE || content.matches("(?is).*\\B@ia\\b.*");
     }
 
-    private void requestAiAfterCommit(AiMessageEntity message, AiConversationEntity conversation, String userId, String content) {
+    private void requestAiAfterCommit(AiMessageEntity message, AiConversationEntity conversation, String userId,
+                                      String content, SendAiMessageRequest input) {
+        AiContextScope scope = input.contextScope() != null ? input.contextScope()
+                : (input.diagramId() == null || input.diagramId().isBlank() ? AiContextScope.PROJECT : AiContextScope.DIAGRAM);
+        // Do not build/deserialize the complete context on the request thread. The worker
+        // captures it immediately before inference, after the message transaction commits.
+        // The request still carries the project/diagram/scope/version selected by the user.
         AiGenerationRequest request = new AiGenerationRequest(message.getId(), conversation.getId(),
-                conversation.getProject().getId(), userId, content, conversation.getType());
+                conversation.getProject().getId(), userId, content, conversation.getType(), input.diagramId(), scope,
+                input.diagramVersion(), null);
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             orchestrator.request(request);
             return;
