@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { API_BASE_URL } from '../../../core/config/api.config';
-import { AiConversation, AiMemory, AiMemoryScope, AiMemoryType, AiMessage, AiMessagesPage } from '../models/ai-chat.model';
+import { AiContextScope, AiConversation, AiMemory, AiMemoryScope, AiMemoryType, AiMessage, AiMessagesPage } from '../models/ai-chat.model';
 
 @Injectable({ providedIn: 'root' })
 export class AiChatService {
@@ -21,9 +21,12 @@ export class AiChatService {
     return this.http.get<AiMessagesPage>(`${API_BASE_URL}/projects/${projectId}/ai/${path}/${conversationId}/messages`, { params });
   }
 
-  sendMessage(projectId: string, conversationId: string, privateChat: boolean, content: string): Observable<AiMessage> {
+  sendMessage(projectId: string, conversationId: string, privateChat: boolean, content: string,
+    clientMessageId?: string | null,
+    context?: { diagramId?: string | null; contextScope?: AiContextScope; diagramVersion?: number | null }): Observable<AiMessage> {
     const path = privateChat ? 'private-chat' : 'chat';
-    return this.http.post<AiMessage>(`${API_BASE_URL}/projects/${projectId}/ai/${path}/${conversationId}/messages`, { content });
+    const body = { content, ...(clientMessageId ? { clientMessageId } : {}), ...(context ?? {}) };
+    return this.http.post<AiMessage>(`${API_BASE_URL}/projects/${projectId}/ai/${path}/${conversationId}/messages`, body);
   }
 
   listMemories(projectId: string, scope: AiMemoryScope): Observable<AiMemory[]> {

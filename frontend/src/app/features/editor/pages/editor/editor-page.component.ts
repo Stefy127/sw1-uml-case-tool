@@ -41,6 +41,12 @@ import { ShareProjectModalComponent } from '../../../projects/components/share-p
 import { ExportMenuComponent } from '../../components/export-menu/export-menu.component';
 import { BackendGeneratorService, BackendGenerationRequest } from '../../services/backend-generator.service';
 import { ProjectChatComponent } from '../../components/project-chat/project-chat.component';
+import { AiAnalysisService } from '../../services/ai-analysis.service';
+import { AnalysisFinding, AnalysisResponse } from '../../models/ai-analysis.model';
+import { AiSuggestion } from '../../models/ai-suggestion.model';
+import { AiSuggestionsService } from '../../services/ai-suggestions.service';
+import { AiChangeProposalsService } from '../../services/ai-change-proposals.service';
+import { AiChangeProposal, AiChangeProposalResponse } from '../../models/ai-change-proposal.model';
 
 type EditorTool = 'SELECT' | 'CLASS' | 'RELATION';
 type RelationType =
@@ -71,6 +77,13 @@ interface MethodDraft {
 interface ParameterDraft {
   name: string;
   type: string;
+}
+
+interface ChangeProposalEdit {
+  selected: boolean;
+  name: string;
+  type: string;
+  discarded: boolean;
 }
 
 interface RenderedUmlClass {
@@ -176,6 +189,9 @@ export class EditorPageComponent implements OnDestroy {
   private readonly voiceParser = inject(VoiceCommandParserService);
   private readonly voiceRecognition = inject(VoiceRecognitionService);
   private readonly aiVoiceCommand = inject(AiVoiceCommandService);
+  private readonly aiAnalysisService = inject(AiAnalysisService);
+  private readonly aiSuggestionsService = inject(AiSuggestionsService);
+  private readonly aiChangeProposalsService = inject(AiChangeProposalsService);
   private readonly projectService = inject(ProjectService, { optional: true });
   private readonly defaultNodeWidth = 240;
   private readonly defaultNodeHeight = 180;
@@ -193,13 +209,76 @@ export class EditorPageComponent implements OnDestroy {
   readonly relationError = signal('');
   readonly currentUserRole = signal<ProjectMemberRole | null>(null);
   readonly projectMembers = signal<ProjectMember[]>([]);
-  readonly onlineCollaborators = signal<string[]>([]);
   readonly collaborationStatus = computed(() => this.collaboration?.status() ?? 'DISCONNECTED');
   readonly presenceOpen = signal(false);
   readonly isReadOnly = computed(() => this.currentUserRole() === 'VIEWER');
   readonly shareOpen = signal(false);
   readonly chatOpen = signal(false);
   readonly moreActionsOpen = signal(false);
+  readonly analysisOpen = signal(false);
+  readonly aiMode = signal<'VALIDATE' | 'SUGGEST' | 'PROPOSE'>('VALIDATE');
+  readonly analysisLoading = signal(false);
+  readonly analysisError = signal('');
+  readonly analysisResult = signal<AnalysisResponse | null>(null);
+  readonly suggestionsOpen = signal(false);
+  readonly suggestionsLoading = signal(false);
+  readonly suggestionsError = signal('');
+  readonly suggestionsResult = signal<{ summary: string; suggestions: AiSuggestion[] } | null>(null);
+  private readonly analysisCanonicalSnapshot = signal<string | null>(null);
+  private readonly suggestionsCanonicalSnapshot = signal<string | null>(null);
+  readonly changeProposalInstruction = signal('');
+  readonly changeProposalOpen = signal(false);
+  readonly changeProposalLoading = signal(false);
+  readonly changeProposalError = signal('');
+  readonly changeProposalResult = signal<AiChangeProposalResponse | null>(null);
+  readonly changeProposalFormOpen = signal(true);
+  readonly changeProposalCustomInstructionOpen = signal(false);
+  readonly changeProposalSubmittedInstruction = signal('');
+  readonly changeProposalTargetClassId = signal<string | null | undefined>(undefined);
+  private readonly changeProposalEdits = signal<Record<string, ChangeProposalEdit>>({});
+  readonly changeProposalTargetClasses = computed(() => this.diagram()?.canonicalModel.classes ?? []);
+  readonly changeProposalTargetClass = computed(() => {
+    const targetId = this.changeProposalTargetClassId() === undefined ? this.selectedClassId() : this.changeProposalTargetClassId();
+    return this.changeProposalTargetClasses().find(umlClass => umlClass.id === targetId) ?? null;
+  });
+  readonly supportedChangeProposalTypes = ['String', 'Integer', 'Long', 'Boolean', 'Double', 'Float', 'Date', 'LocalDate', 'LocalDateTime', 'UUID'];
+  private readonly changeProposalCanonicalSnapshot = signal<string | null>(null);
+  private changeProposalRequestToken = 0;
+  private analysisRequestToken = 0;
+  readonly analysisFindings = computed(() => {
+    const order: Record<string, number> = { ERROR: 0, WARNING: 1, INFO: 2 };
+    return [...(this.analysisResult()?.findings ?? [])].sort(
+      (left, right) => (order[left.severity] ?? 3) - (order[right.severity] ?? 3),
+    );
+  });
+  readonly analysisCounts = computed(() => {
+    const findings = this.analysisResult()?.findings ?? [];
+    return {
+      ERROR: findings.filter((finding) => finding.severity === 'ERROR').length,
+      WARNING: findings.filter((finding) => finding.severity === 'WARNING').length,
+      INFO: findings.filter((finding) => finding.severity === 'INFO').length,
+    };
+  });
+  readonly analysisStale = computed(() => {
+    const snapshot = this.analysisCanonicalSnapshot();
+    const current = this.diagram();
+    return !!snapshot && !!current && snapshot !== JSON.stringify(current.canonicalModel);
+  });
+  readonly suggestionsStale = computed(() => {
+    const snapshot = this.suggestionsCanonicalSnapshot();
+    const current = this.diagram();
+    return !!snapshot && !!current && snapshot !== JSON.stringify(current.canonicalModel);
+  });
+  readonly changeProposalStale = computed(() => {
+    const result = this.changeProposalResult();
+    const snapshot = this.changeProposalCanonicalSnapshot();
+    const current = this.diagram();
+    return !!result?.isStale || (!!snapshot && !!current && snapshot !== JSON.stringify(current.canonicalModel));
+  });
+  readonly changeProposalInstructionChanged = computed(() => {
+    const submitted = this.changeProposalSubmittedInstruction();
+    return !!submitted && submitted !== this.changeProposalInstruction().trim();
+  });
   readonly toolbarOpen = signal(false);
   readonly inspectorOpen = signal(false);
   readonly pendingRelationDeletion = signal<UmlRelation | null>(null);
@@ -225,6 +304,8 @@ export class EditorPageComponent implements OnDestroy {
   readonly suppressCanvasClick = signal(false);
   readonly worldTransform = computed(() => `translate(${this.panX()}px, ${this.panY()}px) scale(${this.zoom()})`);
   readonly zoomPercent = computed(() => Math.round(this.zoom() * 100));
+  readonly navigationHighlightId = signal<string | null>(null);
+  private navigationHighlightTimer: ReturnType<typeof setTimeout> | null = null;
   readonly styleSaving = signal(false);
   readonly styleError = signal('');
   readonly importDialogOpen = signal(false);
@@ -422,7 +503,6 @@ export class EditorPageComponent implements OnDestroy {
               this.selectedClassId.set(null); this.selectedRelationId.set(null);
             }
           }
-          if (event.type === 'PRESENCE') this.onlineCollaborators.set((event.users ?? []).map((user) => user.userId));
         });
         if (this.projectService) {
           this.projectService.getMyRole(diagram.projectId).subscribe({ next: (role) => this.currentUserRole.set(role.role), error: () => this.currentUserRole.set(null) });
@@ -438,10 +518,12 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.analysisRequestToken++;
     this.voiceSubscription?.unsubscribe();
     this.collaborationSubscription?.unsubscribe();
     this.collaboration?.disconnect();
     this.voiceRecognition.stop();
+    if (this.navigationHighlightTimer !== null) clearTimeout(this.navigationHighlightTimer);
   }
 
   private lastLocalOperationId: string | null = null;
@@ -473,6 +555,354 @@ export class EditorPageComponent implements OnDestroy {
   openChat(): void {
     this.moreActionsOpen.set(false);
     this.chatOpen.set(true);
+  }
+
+  analyzeDiagram(): void {
+    const projectId = this.diagram()?.projectId;
+    if (!projectId || this.analysisLoading()) return;
+    this.moreActionsOpen.set(false);
+    this.analysisOpen.set(true);
+    this.tab = 'IA';
+    this.inspectorOpen.set(true);
+    this.analysisLoading.set(true);
+    this.analysisError.set('');
+    const token = ++this.analysisRequestToken;
+    this.aiAnalysisService.analyze(projectId, this.diagramId).subscribe({
+      next: (result) => {
+        if (token !== this.analysisRequestToken || this.diagram()?.projectId !== projectId) return;
+        this.analysisResult.set(result);
+        this.analysisCanonicalSnapshot.set(JSON.stringify(this.diagram()?.canonicalModel ?? null));
+        this.analysisLoading.set(false);
+      },
+      error: (error: HttpErrorResponse) => {
+        if (token !== this.analysisRequestToken || this.diagram()?.projectId !== projectId) return;
+        this.analysisLoading.set(false);
+        this.analysisError.set(this.analysisErrorMessage(error));
+      },
+    });
+  }
+
+  closeAnalysis(): void {
+    this.analysisOpen.set(false);
+  }
+
+  setAiMode(mode: 'VALIDATE' | 'SUGGEST' | 'PROPOSE'): void {
+    this.aiMode.set(mode);
+  }
+
+  retryAnalysis(): void {
+    this.analysisResult.set(null);
+    this.analysisCanonicalSnapshot.set(null);
+    this.analyzeDiagram();
+  }
+
+  retrySuggestions(): void {
+    this.suggestionsResult.set(null);
+    this.suggestionsCanonicalSnapshot.set(null);
+    this.suggestImprovements();
+  }
+
+  prepareChanges(): void {
+    const projectId = this.diagram()?.projectId;
+    const instruction = this.changeProposalInstruction().trim();
+    if (!projectId || !this.diagramId || this.changeProposalLoading()) return;
+    if (!instruction) {
+      this.changeProposalError.set('Escribe una instrucción para preparar una propuesta.');
+      this.changeProposalOpen.set(true);
+      return;
+    }
+    this.changeProposalOpen.set(true);
+    this.changeProposalLoading.set(true);
+    this.changeProposalError.set('');
+    const token = ++this.changeProposalRequestToken;
+    const diagramId = this.diagramId;
+    const targetElementId = this.changeProposalTargetClassId() === undefined ? this.selectedClassId() : this.changeProposalTargetClassId();
+    this.aiChangeProposalsService.propose(projectId, diagramId, instruction, targetElementId).subscribe({
+      next: result => {
+        if (token !== this.changeProposalRequestToken || this.diagram()?.id !== diagramId) return;
+        if (targetElementId !== (this.changeProposalTargetClassId() === undefined ? this.selectedClassId() : this.changeProposalTargetClassId())) {
+          this.changeProposalLoading.set(false);
+          this.changeProposalError.set('La clase seleccionada cambió; genera la propuesta nuevamente.');
+          this.changeProposalFormOpen.set(true);
+          return;
+        }
+        this.changeProposalResult.set(result);
+        this.initializeChangeProposalEdits(result.proposals);
+        this.changeProposalSubmittedInstruction.set(instruction);
+        this.changeProposalCanonicalSnapshot.set(JSON.stringify(this.diagram()?.canonicalModel ?? null));
+        this.changeProposalFormOpen.set(result.proposals.length === 0 || result.isStale);
+        this.changeProposalLoading.set(false);
+      },
+      error: error => {
+        if (token !== this.changeProposalRequestToken || this.diagram()?.id !== diagramId) return;
+        if (targetElementId !== (this.changeProposalTargetClassId() === undefined ? this.selectedClassId() : this.changeProposalTargetClassId())) {
+          this.changeProposalLoading.set(false);
+          this.changeProposalError.set('La clase seleccionada cambió; genera la propuesta nuevamente.');
+          this.changeProposalFormOpen.set(true);
+          return;
+        }
+        this.changeProposalError.set(this.changeProposalErrorMessage(error));
+        this.changeProposalFormOpen.set(true);
+        this.changeProposalLoading.set(false);
+      },
+    });
+  }
+
+  retryChangeProposals(): void {
+    this.changeProposalResult.set(null);
+    this.changeProposalCanonicalSnapshot.set(null);
+    this.prepareChanges();
+  }
+
+  editChangeInstruction(): void {
+    this.changeProposalFormOpen.set(true);
+    this.changeProposalCustomInstructionOpen.set(true);
+    this.changeProposalError.set('');
+  }
+
+  openCustomChangeInstruction(): void {
+    this.changeProposalCustomInstructionOpen.set(true);
+    this.changeProposalFormOpen.set(true);
+    this.changeProposalError.set('');
+  }
+
+  setChangeProposalTargetClass(id: string | null): void {
+    this.changeProposalTargetClassId.set(id || null);
+    if (this.changeProposalLoading()) {
+      this.changeProposalRequestToken++;
+      this.changeProposalLoading.set(false);
+      this.changeProposalError.set('La clase seleccionada cambió; genera la propuesta nuevamente.');
+      this.changeProposalFormOpen.set(true);
+    }
+  }
+
+  clearChangeProposalTargetClass(): void {
+    this.setChangeProposalTargetClass(null);
+  }
+
+  suggestAttributesForSelectedClass(): void {
+    const target = this.changeProposalTargetClass();
+    if (!target) {
+      this.changeProposalError.set('Selecciona una clase para sugerir atributos.');
+      this.changeProposalFormOpen.set(true);
+      return;
+    }
+    this.changeProposalInstruction.set(`Sugerime atributos para ${target.name}`);
+    this.prepareChanges();
+  }
+
+  private initializeChangeProposalEdits(proposals: AiChangeProposal[]): void {
+    const edits: Record<string, ChangeProposalEdit> = {};
+    for (const proposal of proposals) {
+      const parsed = proposal.operation === 'ADD_ATTRIBUTE' && proposal.newValue
+        ? proposal.newValue.split(':').map(value => value.trim())
+        : [];
+      edits[proposal.proposalId] = {
+        selected: true,
+        discarded: false,
+        name: proposal.operation === 'RENAME_ATTRIBUTE' ? proposal.newValue ?? ''
+          : this.changeProposalAttributeName(proposal),
+        type: proposal.operation === 'ADD_ATTRIBUTE' ? parsed.slice(1).join(':')
+          : proposal.operation === 'CHANGE_ATTRIBUTE_TYPE' ? proposal.newValue ?? '' : '',
+      };
+    }
+    this.changeProposalEdits.set(edits);
+  }
+
+  changeProposalEdit(proposal: AiChangeProposal): ChangeProposalEdit {
+    return this.changeProposalEdits()[proposal.proposalId] ?? {
+      selected: true, discarded: false, name: this.changeProposalAttributeName(proposal), type: '',
+    };
+  }
+
+  toggleChangeProposal(proposal: AiChangeProposal): void {
+    const edit = this.changeProposalEdit(proposal);
+    this.changeProposalEdits.update(values => ({ ...values, [proposal.proposalId]: { ...edit, selected: !edit.selected } }));
+  }
+
+  discardChangeProposal(proposal: AiChangeProposal): void {
+    const edit = this.changeProposalEdit(proposal);
+    this.changeProposalEdits.update(values => ({ ...values, [proposal.proposalId]: { ...edit, selected: false, discarded: true } }));
+  }
+
+  updateChangeProposalName(proposal: AiChangeProposal, name: string): void {
+    const edit = this.changeProposalEdit(proposal);
+    this.changeProposalEdits.update(values => ({ ...values, [proposal.proposalId]: { ...edit, name } }));
+  }
+
+  updateChangeProposalType(proposal: AiChangeProposal, type: string): void {
+    const edit = this.changeProposalEdit(proposal);
+    this.changeProposalEdits.update(values => ({ ...values, [proposal.proposalId]: { ...edit, type } }));
+  }
+
+  changeProposalDisplayNewValue(proposal: AiChangeProposal): string {
+    const edit = this.changeProposalEdit(proposal);
+    if (proposal.operation === 'ADD_ATTRIBUTE') return `${edit.name}: ${edit.type}`;
+    if (proposal.operation === 'RENAME_ATTRIBUTE') return edit.name;
+    if (proposal.operation === 'CHANGE_ATTRIBUTE_TYPE') return edit.type;
+    return proposal.newValue ?? '';
+  }
+
+  changeOperationLabel(operation: string): string {
+    const labels: Record<string, string> = {
+      ADD_ATTRIBUTE: 'Agregar atributo',
+      RENAME_ATTRIBUTE: 'Renombrar atributo',
+      CHANGE_ATTRIBUTE_TYPE: 'Cambiar tipo',
+    };
+    return labels[operation] ?? operation.replace(/_/g, ' ').toLowerCase();
+  }
+
+  changeProposalAttributeName(proposal: AiChangeProposal): string {
+    if (proposal.targetAttributeId) {
+      for (const umlClass of this.diagram()?.canonicalModel.classes ?? []) {
+        const attribute = umlClass.attributes.find(item => item.id === proposal.targetAttributeId);
+        if (attribute) return attribute.name;
+      }
+    }
+    if (proposal.operation === 'ADD_ATTRIBUTE' && proposal.newValue) return proposal.newValue.split(':')[0].trim();
+    return 'Atributo no disponible';
+  }
+
+  private changeProposalErrorMessage(error: HttpErrorResponse): string {
+    if (error.status === 401) return 'La sesión caducó. Inicia sesión nuevamente.';
+    if (error.status === 403) return 'No tienes permiso para preparar propuestas en este proyecto.';
+    if (error.status === 404) return 'El proyecto o diagrama no existe.';
+    if (error.status === 502 || error.status === 503 || error.status === 504) return 'La IA no está disponible en este momento.';
+    return error.error?.message ?? 'No se pudo preparar la propuesta. Inténtalo de nuevo.';
+  }
+
+  suggestImprovements(): void {
+    const projectId = this.diagram()?.projectId;
+    if (!projectId || !this.diagramId || this.suggestionsLoading()) return;
+    this.suggestionsOpen.set(true);
+    this.suggestionsLoading.set(true);
+    this.suggestionsError.set('');
+    const token = this.analysisRequestToken;
+    this.aiSuggestionsService.suggest(projectId, this.diagramId).subscribe({
+      next: result => {
+        if (token === this.analysisRequestToken && this.diagram()?.id === this.diagramId) {
+          this.suggestionsResult.set(result);
+          this.suggestionsCanonicalSnapshot.set(JSON.stringify(this.diagram()?.canonicalModel ?? null));
+        }
+        this.suggestionsLoading.set(false);
+      },
+      error: error => { if (token === this.analysisRequestToken) this.suggestionsError.set(error?.error?.message ?? 'No se pudieron generar sugerencias.'); this.suggestionsLoading.set(false); },
+    });
+  }
+
+  selectSuggestion(suggestion: AiSuggestion): void {
+    if (!suggestion.elementId) return;
+    this.selectAnalysisElement({ severity: 'INFO', category: suggestion.category, elementId: suggestion.elementId, title: suggestion.title, description: suggestion.reason, suggestion: suggestion.proposal });
+  }
+
+  analysisSeverityLabel(severity: string): string {
+    return severity === 'ERROR' ? 'Error' : severity === 'WARNING' ? 'Advertencia' : 'Información';
+  }
+
+  analysisCategoryLabel(category: string): string {
+    const labels: Record<string, string> = {
+      NAMING: 'Nombres', ATTRIBUTE: 'Atributos', OPERATION: 'Operaciones',
+      RELATIONSHIP: 'Relaciones', MULTIPLICITY: 'Multiplicidades',
+      INHERITANCE: 'Herencia', CONSISTENCY: 'Consistencia', GENERAL: 'General',
+    };
+    return labels[category] ?? category.replace(/_/g, ' ').toLowerCase();
+  }
+
+  suggestionCategoryLabel(category: string): string {
+    const labels: Record<string, string> = {
+      ATTRIBUTE: 'Atributos', GENERAL: 'General', RELATIONSHIP: 'Relaciones',
+      OPERATION: 'Operaciones', NAMING: 'Nombres',
+    };
+    return labels[category] ?? category.replace(/_/g, ' ').toLowerCase();
+  }
+
+  analysisElementName(elementId: string | null): string {
+    if (!elementId) return 'Sin elemento específico';
+    const current = this.diagram()?.canonicalModel;
+    const umlClass = current?.classes.find((item) => item.id === elementId);
+    if (umlClass) return umlClass.name;
+    for (const candidate of current?.classes ?? []) {
+      if (candidate.attributes.some((item) => item.id === elementId)) return `${candidate.name} · atributo`;
+      if (candidate.methods.some((item) => item.id === elementId)) return `${candidate.name} · método`;
+    }
+    const relation = current?.relations.find((item) => item.id === elementId);
+    if (relation) return `${this.relationEndpointName(relation.sourceClassId)} ↔ ${this.relationEndpointName(relation.targetClassId)}`;
+    return 'Elemento no disponible';
+  }
+
+  analysisElementSelectable(elementId: string | null): boolean {
+    const current = this.diagram()?.canonicalModel;
+    return !!elementId && !!current && (current.classes.some((item) => item.id === elementId) || current.relations.some((item) => item.id === elementId));
+  }
+
+  selectAnalysisElement(finding: AnalysisFinding): void {
+    const id = finding.elementId;
+    const current = this.diagram()?.canonicalModel;
+    if (!id || !current) return;
+    const umlClass = current.classes.find((item) => item.id === id);
+    if (umlClass) {
+      this.activeTool.set('SELECT');
+      this.selectedClassId.set(id);
+      this.selectedRelationId.set(null);
+      this.collaboration?.sendSelection('CLASS', id);
+      return;
+    }
+    const relation = current.relations.find((item) => item.id === id);
+    if (relation) {
+      this.activeTool.set('SELECT');
+      this.selectedRelationId.set(id);
+      this.selectedClassId.set(null);
+      this.syncRelationDrafts(relation);
+      this.collaboration?.sendSelection('RELATION', id);
+    }
+  }
+
+  selectChangeProposalElement(proposal: AiChangeProposal): void {
+    const current = this.diagram()?.canonicalModel;
+    const result = this.changeProposalResult();
+    if (!current || result?.diagramId !== this.diagramId) {
+      this.error.set('La propuesta pertenece a otro diagrama o está desactualizada.');
+      return;
+    }
+    const targetClass = current.classes.find(item => item.id === proposal.targetElementId);
+    const targetAttribute = proposal.targetAttributeId
+      ? current.classes.flatMap(item => item.attributes).find(item => item.id === proposal.targetAttributeId)
+      : undefined;
+    const containingClass = targetAttribute
+      ? current.classes.find(item => item.attributes.some(attribute => attribute.id === targetAttribute.id))
+      : targetClass;
+    if (!containingClass) {
+      this.error.set('El elemento de la propuesta ya no existe en este diagrama.');
+      return;
+    }
+    this.activeTool.set('SELECT');
+    this.selectedClassId.set(containingClass.id);
+    this.selectedRelationId.set(null);
+    this.collaboration?.sendSelection('CLASS', containingClass.id);
+    this.navigationHighlightId.set(targetAttribute?.id ?? containingClass.id);
+    if (this.navigationHighlightTimer !== null) clearTimeout(this.navigationHighlightTimer);
+    this.navigationHighlightTimer = setTimeout(() => this.navigationHighlightId.set(null), 1800);
+    queueMicrotask(() => this.centerCanvasOnClass(containingClass.id));
+  }
+
+  private centerCanvasOnClass(classId: string): void {
+    const viewport = document.querySelector<HTMLElement>('.canvas');
+    const element = Array.from(document.querySelectorAll<HTMLElement>('.uml-class'))
+      .find(candidate => candidate.dataset['classId'] === classId);
+    if (!viewport || !element) return;
+    const viewportRect = viewport.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    this.panX.update(value => value + viewportRect.left + viewportRect.width / 2 - (elementRect.left + elementRect.width / 2));
+    this.panY.update(value => value + viewportRect.top + viewportRect.height / 2 - (elementRect.top + elementRect.height / 2));
+  }
+
+  private analysisErrorMessage(error: HttpErrorResponse): string {
+    if (error.status === 401) return 'La sesión caducó. Inicia sesión nuevamente.';
+    if (error.status === 403) return 'No tienes acceso a este proyecto.';
+    if (error.status === 404) return 'El proyecto no existe o no tiene un diagrama analizable.';
+    if (error.status === 413) return 'El contexto del proyecto supera el límite permitido.';
+    if (error.status === 502 || error.status === 503 || error.status === 504) return 'La IA no está disponible en este momento.';
+    return error.error?.message ?? 'No se pudo analizar el diagrama. Revisa tu conexión e inténtalo de nuevo.';
   }
 
   toggleToolbar(): void { this.toolbarOpen.update((value) => !value); }

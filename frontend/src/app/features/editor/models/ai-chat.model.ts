@@ -2,6 +2,7 @@ export type AiConversationType = 'GROUP' | 'PRIVATE';
 export type AiMessageAuthorType = 'USER' | 'AI' | 'SYSTEM';
 export type AiMemoryScope = 'PROJECT' | 'PRIVATE';
 export type AiMemoryType = 'CONVENTION' | 'DECISION' | 'PREFERENCE' | 'NOTE';
+export type AiContextScope = 'DIAGRAM' | 'PROJECT';
 
 export interface AiConversation {
   id: string;

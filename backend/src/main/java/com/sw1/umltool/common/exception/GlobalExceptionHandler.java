@@ -16,6 +16,7 @@ import com.sw1.umltool.features.project.exception.ProjectForbiddenException;
 import com.sw1.umltool.features.project.exception.ProjectNotFoundException;
 import com.sw1.umltool.features.ai.chat.exception.AiConversationNotFoundException;
 import com.sw1.umltool.features.ai.memory.exception.AiMemoryNotFoundException;
+import com.sw1.umltool.features.ai.analysis.exception.AiAnalysisException;
 
 import java.util.stream.Collectors;
 
@@ -41,6 +42,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AiMemoryNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleAiMemoryNotFound(AiMemoryNotFoundException exception) {
         return error(HttpStatus.NOT_FOUND, "AI_MEMORY_NOT_FOUND", exception.getMessage());
+    }
+
+    @ExceptionHandler(AiAnalysisException.class)
+    public ResponseEntity<ApiErrorResponse> handleAiAnalysis(AiAnalysisException exception) {
+        return error(HttpStatus.BAD_GATEWAY, "AI_ANALYSIS_ERROR", exception.getMessage());
     }
 
     @ExceptionHandler(VersionConflictException.class)

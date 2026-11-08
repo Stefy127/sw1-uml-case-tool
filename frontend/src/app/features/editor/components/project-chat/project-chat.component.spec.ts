@@ -9,6 +9,23 @@ import { CollaborationService } from '../../services/collaboration.service';
 import { AuthService } from '../../../auth/services/auth.service';
 
 describe('ProjectChatComponent', () => {
+  it('renders basic Markdown safely without exposing raw HTML', () => {
+    const page = Object.create(ProjectChatComponent.prototype) as ProjectChatComponent;
+    const rendered = page.renderMessage('**Clases**\n- `Cliente`\n<script>alert(1)</script>');
+
+    expect(rendered).toContain('<strong>Clases</strong>');
+    expect(rendered).toContain('<li><code>Cliente</code></li>');
+    expect(rendered).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(rendered).not.toContain('<script>');
+  });
+
+  it('renders escaped numbered Markdown lists as ordered lists', () => {
+    const page = Object.create(ProjectChatComponent.prototype) as ProjectChatComponent;
+    const rendered = page.renderMessage('1\\. Hecho **comprobado**\n2\\. Sugerencia opcional');
+
+    expect(rendered).toContain('<ol><li>Hecho <strong>comprobado</strong></li><li>Sugerencia opcional</li></ol>');
+  });
+
   it('subscribes to the project and appends a persisted WebSocket message once', async () => {
     const events = new Subject<CollaborationEvent>();
     const collaboration = {
@@ -80,6 +97,78 @@ describe('ProjectChatComponent', () => {
     page.onComposerKeydown(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
 
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends the selected diagram context and supports the project scope', async () => {
+    const collaboration = {
+      events: new Subject<CollaborationEvent>(),
+      status: signal<'DISCONNECTED'>('DISCONNECTED'),
+      subscribeProject: vi.fn(),
+      unsubscribeProject: vi.fn(),
+      sendChatMessage: vi.fn(() => null),
+    };
+    const chat = {
+      getConversation: vi.fn(() => of({ id: 'c1', projectId: 'p1', type: 'PRIVATE' as const })),
+      getMessages: vi.fn(() => of({ messages: [], nextCursor: null })),
+      listMemories: vi.fn(() => of([])),
+      sendMessage: vi.fn(() => of({ id: 'm1', authorType: 'USER', content: 'hola', createdAt: '2026-01-01T00:00:00', authorName: 'Ana', authorUserId: 'u1' })),
+    };
+    await TestBed.configureTestingModule({
+      imports: [ProjectChatComponent],
+      providers: [
+        { provide: AiChatService, useValue: chat },
+        { provide: CollaborationService, useValue: collaboration },
+        { provide: AuthService, useValue: { currentUser: signal(null) } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ProjectChatComponent);
+    fixture.componentRef.setInput('projectId', 'p1');
+    fixture.componentRef.setInput('diagramId', 'diagram-7');
+    fixture.componentRef.setInput('diagramVersion', 12);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const page = fixture.componentInstance;
+    page.draft = '¿Qué clases existen?';
+    page.send();
+    expect(chat.sendMessage).toHaveBeenCalledWith('p1', 'c1', false, '¿Qué clases existen?', expect.any(String), {
+      diagramId: 'diagram-7', contextScope: 'DIAGRAM', diagramVersion: 12,
+    });
+    page.setContextScope('PROJECT');
+    expect(page.contextScope()).toBe('PROJECT');
+  });
+
+  it('releases sending and clears the composer when HTTP delivery completes', async () => {
+    const response = new Subject<any>();
+    const collaboration = { events: new Subject<CollaborationEvent>(), status: signal<'DISCONNECTED'>('DISCONNECTED'), subscribeProject: vi.fn(), unsubscribeProject: vi.fn(), sendChatMessage: vi.fn(() => null) };
+    const chat = {
+      getConversation: vi.fn(() => of({ id: 'c1', projectId: 'p1', type: 'PRIVATE' as const })),
+      getMessages: vi.fn(() => of({ messages: [], nextCursor: null })), listMemories: vi.fn(() => of([])), sendMessage: vi.fn(() => response),
+    };
+    await TestBed.configureTestingModule({ imports: [ProjectChatComponent], providers: [
+      { provide: AiChatService, useValue: chat }, { provide: CollaborationService, useValue: collaboration },
+      { provide: AuthService, useValue: { currentUser: signal(null) } },
+    ] }).compileComponents();
+    const fixture = TestBed.createComponent(ProjectChatComponent); fixture.componentRef.setInput('projectId', 'p1'); fixture.detectChanges(); await fixture.whenStable();
+    const page = fixture.componentInstance; page.draft = 'consulta'; page.send();
+    expect(page.sending()).toBe(true);
+    response.next({ id: 'm1', authorType: 'USER', content: 'consulta', createdAt: '2026-01-01T00:00:00', authorName: 'Ana', authorUserId: 'u1' }); response.complete();
+    expect(page.sending()).toBe(false); expect(page.draft).toBe('');
+  });
+
+  it('releases sending but preserves the composer when HTTP delivery fails', async () => {
+    const response = new Subject<any>();
+    const collaboration = { events: new Subject<CollaborationEvent>(), status: signal<'DISCONNECTED'>('DISCONNECTED'), subscribeProject: vi.fn(), unsubscribeProject: vi.fn(), sendChatMessage: vi.fn(() => null) };
+    const chat = {
+      getConversation: vi.fn(() => of({ id: 'c1', projectId: 'p1', type: 'PRIVATE' as const })),
+      getMessages: vi.fn(() => of({ messages: [], nextCursor: null })), listMemories: vi.fn(() => of([])), sendMessage: vi.fn(() => response),
+    };
+    await TestBed.configureTestingModule({ imports: [ProjectChatComponent], providers: [
+      { provide: AiChatService, useValue: chat }, { provide: CollaborationService, useValue: collaboration },
+      { provide: AuthService, useValue: { currentUser: signal(null) } },
+    ] }).compileComponents();
+    const fixture = TestBed.createComponent(ProjectChatComponent); fixture.componentRef.setInput('projectId', 'p1'); fixture.detectChanges(); await fixture.whenStable();
+    const page = fixture.componentInstance; page.draft = 'reintentar'; page.send(); response.error({ error: { message: 'fallo' } });
+    expect(page.sending()).toBe(false); expect(page.draft).toBe('reintentar'); expect(page.error()).toBe('fallo');
   });
 
   it('reconciles REST create response and WebSocket CREATED by memory id', async () => {

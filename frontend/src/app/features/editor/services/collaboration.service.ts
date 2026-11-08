@@ -2,13 +2,13 @@ import { Injectable, signal } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
 import { API_BASE_URL } from '../../../core/config/api.config';
 import { ExecuteDiagramOperationRequest, OperationExecutionResponse } from '../models/diagram-operation.model';
-import { AiMemory, AiMessage } from '../models/ai-chat.model';
+import { AiContextScope, AiMemory, AiMessage } from '../models/ai-chat.model';
 
 export type CollaborationStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING' | 'ERROR';
 export interface OnlineUser { userId: string; firstName: string; lastName: string; role: 'OWNER' | 'EDITOR' | 'VIEWER'; }
 export interface RemoteCursor { user: OnlineUser; x: number; y: number; updatedAt: number; }
 export interface RemoteSelection { user: OnlineUser; elementType: 'CLASS' | 'RELATION' | null; elementId: string | null; }
-export interface CollaborationEvent { type: string; diagramId?: string; projectId?: string; conversationId?: string; clientMessageId?: string; operationId?: string; reason?: string; serverVersion?: number; version?: number; users?: OnlineUser[]; result?: OperationExecutionResponse; message?: AiMessage; memory?: AiMemory; memoryId?: string; errorMessage?: string; canonicalModel?: OperationExecutionResponse['canonicalModel']; viewState?: OperationExecutionResponse['viewState']; actor?: { userId: string }; user?: OnlineUser; x?: number; y?: number; elementType?: 'CLASS' | 'RELATION' | null; elementId?: string | null; }
+export interface CollaborationEvent { type: string; diagramId?: string; projectId?: string; conversationId?: string; clientMessageId?: string; contextScope?: AiContextScope; diagramVersion?: number; operationId?: string; reason?: string; serverVersion?: number; version?: number; users?: OnlineUser[]; result?: OperationExecutionResponse; message?: AiMessage; memory?: AiMemory; memoryId?: string; errorMessage?: string; canonicalModel?: OperationExecutionResponse['canonicalModel']; viewState?: OperationExecutionResponse['viewState']; actor?: { userId: string }; user?: OnlineUser; x?: number; y?: number; elementType?: 'CLASS' | 'RELATION' | null; elementId?: string | null; }
 
 @Injectable({ providedIn: 'root' })
 export class CollaborationService {
@@ -100,11 +100,12 @@ export class CollaborationService {
     if (this.isConnected()) this.send({ type: 'CHAT_PROJECT_UNSUBSCRIBE', projectId });
   }
 
-  sendChatMessage(projectId: string, conversationId: string, content: string): string | null {
+  sendChatMessage(projectId: string, conversationId: string, content: string,
+    context?: { diagramId?: string | null; contextScope?: AiContextScope; diagramVersion?: number | null }): string | null {
     if (!this.isConnected() || !this.projectSubscriptions.has(projectId)) return null;
     const clientMessageId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    this.send({ type: 'CHAT_MESSAGE_SEND', projectId, conversationId, clientMessageId, content });
+    this.send({ type: 'CHAT_MESSAGE_SEND', projectId, conversationId, clientMessageId, content, ...context });
     return clientMessageId;
   }
 
