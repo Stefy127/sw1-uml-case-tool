@@ -8,8 +8,13 @@ import java.util.List;
 public record AiVoiceInterpretRequest(
         @NotBlank @Size(max = 2000) String text,
         String language,
-        @Valid DiagramContext diagramContext
+        @Valid DiagramContext diagramContext,
+        String projectId,
+        String diagramId
 ) {
+    public AiVoiceInterpretRequest(String text, String language, DiagramContext diagramContext) {
+        this(text, language, diagramContext, null, null);
+    }
     public record DiagramContext(List<ClassContext> classes,
                                  List<RelationContext> relations,
                                  List<AssociationClassLinkContext> associationClassLinks) {

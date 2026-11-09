@@ -3,7 +3,11 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { API_BASE_URL } from '../../../core/config/api.config';
-import { AiChangeProposalResponse } from '../models/ai-change-proposal.model';
+import {
+  AiChangeProposalApplyRequest,
+  AiChangeProposalApplyResponse,
+  AiChangeProposalResponse,
+} from '../models/ai-change-proposal.model';
 
 @Injectable({ providedIn: 'root' })
 export class AiChangeProposalsService {
@@ -13,6 +17,13 @@ export class AiChangeProposalsService {
     return this.http.post<AiChangeProposalResponse>(
       `${API_BASE_URL}/projects/${encodeURIComponent(projectId)}/ai/change-proposals?diagramId=${encodeURIComponent(diagramId)}`,
       { instruction, targetElementId },
+    );
+  }
+
+  apply(projectId: string, request: AiChangeProposalApplyRequest): Observable<AiChangeProposalApplyResponse> {
+    return this.http.post<AiChangeProposalApplyResponse>(
+      `${API_BASE_URL}/projects/${encodeURIComponent(projectId)}/ai/change-proposals/apply`,
+      request,
     );
   }
 }

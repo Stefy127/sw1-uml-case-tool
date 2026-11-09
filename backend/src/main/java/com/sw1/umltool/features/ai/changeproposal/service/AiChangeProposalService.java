@@ -13,9 +13,11 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -93,18 +95,31 @@ public class AiChangeProposalService {
 
     private AiChangeProposalResponse validate(JsonNode root, AiChangeProposalContextService.Snapshot snapshot) {
         JsonNode values = root.get("proposals");
-        if (values == null || !values.isArray() || values.size() > MAX_PROPOSALS) {
+        if (values == null || !values.isArray()) {
             throw new AiAnalysisException("La respuesta contiene demasiadas propuestas o un formato inválido.");
         }
         List<AiChangeProposal> result = new ArrayList<>();
         Set<String> keys = new HashSet<>();
+        Map<String, Integer> discarded = new HashMap<>();
         for (int index = 0; index < values.size(); index++) {
             JsonNode value = values.get(index);
+            if (result.size() >= MAX_PROPOSALS) {
+                increment(discarded, "LIMIT");
+                continue;
+            }
+            if (value == null || !value.isObject()) {
+                increment(discarded, "STRUCTURE");
+                continue;
+            }
             String operation = firstText(value, "operation", "type");
-            if (operation == null) throw new AiAnalysisException("La propuesta no contiene operation.");
+            if (operation == null) {
+                increment(discarded, "MISSING_OPERATION");
+                continue;
+            }
             operation = operation.toUpperCase(Locale.ROOT);
             if (!OPERATIONS.contains(operation)) {
-                throw new AiAnalysisException("La operación de propuesta no está permitida.");
+                increment(discarded, "UNSUPPORTED_OPERATION");
+                continue;
             }
             String classId = firstText(value, "targetElementId", "classId");
             AiChangeProposalContextService.ClassDescriptor target = snapshot.classById(classId);
@@ -115,7 +130,10 @@ public class AiChangeProposalService {
                         .findFirst().orElse(null);
                 if (target != null) classId = target.id();
             }
-            if (target == null) throw new AiAnalysisException("La propuesta referencia una clase UML inexistente.");
+            if (target == null) {
+                increment(discarded, "UNKNOWN_CLASS");
+                continue;
+            }
             String attributeId = nullable(value, "targetAttributeId");
             String newName = firstText(value, "newAttributeName", "attributeName", "name");
             String newType = firstText(value, "attributeType", "newAttributeType");
@@ -126,38 +144,55 @@ public class AiChangeProposalService {
                     : target.attributes().stream().filter(item -> item.id().equals(attributeId)).findFirst().orElse(null);
             if (operation.equals("ADD_ATTRIBUTE")) {
                 if (attributeId != null || !validName(newName) || !validType(newType)) {
-                    throw new AiAnalysisException("La propuesta de atributo nuevo no tiene datos válidos.");
+                    increment(discarded, "INVALID_ADD_ATTRIBUTE");
+                    continue;
                 }
                 if (target.attributes().stream().anyMatch(item -> sameName(item.name(), newName))) {
-                    throw new AiAnalysisException("La propuesta intenta duplicar un atributo existente.");
+                    increment(discarded, "DUPLICATE_ATTRIBUTE");
+                    continue;
                 }
                 String key = operation + "|" + target.id() + "|" + newName.toLowerCase(Locale.ROOT) + "|" + newType.toLowerCase(Locale.ROOT);
                 if (keys.add(key)) result.add(new AiChangeProposal(UUID.randomUUID().toString(), operation, target.id(), target.name(),
                         null, null, newName + ": " + newType, reason, value.path("requiresBusinessConfirmation").asBoolean(true)));
+                else increment(discarded, "DUPLICATE_PROPOSAL");
             } else {
                 if (attribute == null || !validName(newName) && operation.equals("RENAME_ATTRIBUTE")
                         || !validType(newType) && operation.equals("CHANGE_ATTRIBUTE_TYPE")) {
-                    throw new AiAnalysisException("La propuesta referencia un atributo inexistente o datos inválidos.");
+                    increment(discarded, "INVALID_ATTRIBUTE_PROPOSAL");
+                    continue;
                 }
                 if (operation.equals("RENAME_ATTRIBUTE")) {
                     if (sameName(attribute.name(), newName) || target.attributes().stream()
                             .anyMatch(item -> !item.id().equals(attribute.id()) && sameName(item.name(), newName))) {
-                        throw new AiAnalysisException("El nuevo nombre del atributo no cambia el modelo o ya está ocupado.");
+                        increment(discarded, "REDUNDANT_OR_DUPLICATE_RENAME");
+                        continue;
                     }
                     String key = operation + "|" + attribute.id() + "|" + newName.toLowerCase(Locale.ROOT);
                     if (keys.add(key)) result.add(new AiChangeProposal(UUID.randomUUID().toString(), operation, target.id(), target.name(),
                             attribute.id(), attribute.name(), newName, reason, value.path("requiresBusinessConfirmation").asBoolean(true)));
+                    else increment(discarded, "DUPLICATE_PROPOSAL");
                 } else {
                     if (attribute.type() != null && attribute.type().equalsIgnoreCase(newType)) {
-                        throw new AiAnalysisException("El nuevo tipo del atributo no cambia el modelo.");
+                        increment(discarded, "REDUNDANT_TYPE_CHANGE");
+                        continue;
                     }
                     String key = operation + "|" + attribute.id() + "|" + newType.toLowerCase(Locale.ROOT);
                     if (keys.add(key)) result.add(new AiChangeProposal(UUID.randomUUID().toString(), operation, target.id(), target.name(),
                             attribute.id(), attribute.type(), newType, reason, value.path("requiresBusinessConfirmation").asBoolean(true)));
+                    else increment(discarded, "DUPLICATE_PROPOSAL");
                 }
             }
         }
+        if (!discarded.isEmpty()) {
+            log.info("AI change proposals validated projectId={} diagramId={} valid={} discarded={} categories={}",
+                    snapshot.projectId(), snapshot.diagramId(), result.size(),
+                    discarded.values().stream().mapToInt(Integer::intValue).sum(), discarded.keySet());
+        }
         return new AiChangeProposalResponse(snapshot.projectId(), snapshot.diagramId(), snapshot.diagramVersion(), List.copyOf(result), false);
+    }
+
+    private void increment(Map<String, Integer> discarded, String category) {
+        discarded.merge(category, 1, Integer::sum);
     }
 
     private AiChangeProposalResponse empty(AiChangeProposalContextService.Snapshot snapshot, boolean stale) {

@@ -111,21 +111,25 @@ class AiChangeProposalServiceTest {
     }
 
     @Test
-    void rejectsDisallowedOperationAndUnknownAttribute() {
+    void discardsDisallowedOperationAndUnknownAttributeWithoutFailingGeneration() {
         model("{\"proposals\":[{\"operation\":\"REMOVE_CLASS\",\"targetElementId\":\"pedido\",\"reason\":\"x\"}]}");
-        assertThrows(AiAnalysisException.class, () -> service.propose("p1", "u1", "d1", new AiChangeProposalRequest("eliminar", null)));
+        assertTrue(service.propose("p1", "u1", "d1", new AiChangeProposalRequest("eliminar", null))
+                .proposals().isEmpty());
 
         model("{\"proposals\":[{\"operation\":\"RENAME_ATTRIBUTE\",\"targetElementId\":\"pedido\",\"targetAttributeId\":\"missing\",\"newAttributeName\":\"x\",\"reason\":\"x\"}]}");
-        assertThrows(AiAnalysisException.class, () -> service.propose("p1", "u1", "d1", new AiChangeProposalRequest("renombrar", null)));
+        assertTrue(service.propose("p1", "u1", "d1", new AiChangeProposalRequest("renombrar", null))
+                .proposals().isEmpty());
     }
 
     @Test
-    void rejectsDuplicateAttributeAndRedundantRename() {
+    void discardsDuplicateAttributeAndRedundantRenameWithoutFailingGeneration() {
         model("{\"proposals\":[{\"operation\":\"ADD_ATTRIBUTE\",\"targetElementId\":\"pedido\",\"newAttributeName\":\"Nombre\",\"attributeType\":\"String\",\"reason\":\"x\"}]}");
-        assertThrows(AiAnalysisException.class, () -> service.propose("p1", "u1", "d1", new AiChangeProposalRequest("agregar", null)));
+        assertTrue(service.propose("p1", "u1", "d1", new AiChangeProposalRequest("agregar", null))
+                .proposals().isEmpty());
 
         model("{\"proposals\":[{\"operation\":\"RENAME_ATTRIBUTE\",\"targetElementId\":\"pedido\",\"targetAttributeId\":\"nombre\",\"newAttributeName\":\"nombre\",\"reason\":\"x\"}]}");
-        assertThrows(AiAnalysisException.class, () -> service.propose("p1", "u1", "d1", new AiChangeProposalRequest("renombrar", null)));
+        assertTrue(service.propose("p1", "u1", "d1", new AiChangeProposalRequest("renombrar", null))
+                .proposals().isEmpty());
     }
 
     @Test
@@ -141,7 +145,31 @@ class AiChangeProposalServiceTest {
     @Test
     void rejectsUnsupportedAttributeType() {
         model("{\"proposals\":[{\"operation\":\"ADD_ATTRIBUTE\",\"targetElementId\":\"pedido\",\"newAttributeName\":\"x\",\"attributeType\":\"MoneyUnknown\",\"reason\":\"x\"}]}");
-        assertThrows(AiAnalysisException.class, () -> service.propose("p1", "u1", "d1", new AiChangeProposalRequest("agregar", null)));
+        assertTrue(service.propose("p1", "u1", "d1", new AiChangeProposalRequest("agregar", null))
+                .proposals().isEmpty());
+    }
+
+    @Test
+    void discardsInvalidAddAttributeAndKeepsValidProposal() {
+        model("{\"proposals\":["
+                + "{\"operation\":\"ADD_ATTRIBUTE\",\"targetElementId\":\"pedido\",\"newAttributeName\":\"\",\"attributeType\":\"String\"},"
+                + "{\"operation\":\"ADD_ATTRIBUTE\",\"className\":\"Pedido\",\"attributeName\":\"codigo\",\"newAttributeType\":\"String\"}]}");
+
+        var response = service.propose("p1", "u1", "d1", new AiChangeProposalRequest("Sugerir atributos", "pedido"));
+
+        assertEquals(1, response.proposals().size());
+        assertEquals("codigo: String", response.proposals().get(0).newValue());
+    }
+
+    @Test
+    void returnsEmptyForMissingAddAttributeDataOrUnknownClass() {
+        model("{\"proposals\":["
+                + "{\"operation\":\"ADD_ATTRIBUTE\",\"targetElementId\":\"pedido\",\"attributeType\":\"String\"},"
+                + "{\"operation\":\"ADD_ATTRIBUTE\",\"className\":\"Factura\",\"attributeName\":\"total\",\"attributeType\":\"Double\"}]}");
+
+        var response = service.propose("p1", "u1", "d1", new AiChangeProposalRequest("Sugerir atributos", null));
+
+        assertTrue(response.proposals().isEmpty());
     }
 
     private void model(String json) {

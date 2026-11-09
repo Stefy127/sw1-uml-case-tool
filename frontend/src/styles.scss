@@ -592,6 +592,56 @@ h3 {
 .editor .more-actions-menu button:hover, .editor .more-actions-menu button:focus-visible { background: var(--color-primary-soft); outline: 0; }
 @media (max-width: 950px) { .editor .editor-head { gap: 12px; padding-inline: 16px; } .editor .editor-actions .action-label { display: none; } .editor .editor-action-button { min-width: 38px; padding: 0 10px; } }
 @media (max-width: 700px) { .editor .editor-head { min-height: 64px; height: 64px; padding: 0 12px; gap: 10px; } .editor .editor-brand { gap: 6px; font-size: 15px; } .editor .editor-brand .brand-mark { width: 30px; height: 30px; } .editor .editor-collaborators, .editor .read-only-badge { display: none; } .editor .editor-action-button { min-height: 36px; min-width: 36px; padding: 0 8px; } .editor .editor-generator-button { display: none; } .editor .editor-mobile-controls { display: flex; gap: 4px; } .editor .toolbar { width: 65px; transform: translateX(-100%); transition: transform .2s ease; } .editor .toolbar.toolbar-open { transform: translateX(0); } .editor .inspector { position: absolute; z-index: 2; right: 0; height: calc(100dvh - 64px); transform: translateX(100%); transition: transform .2s ease; } .editor .inspector.inspector-open { transform: translateX(0); } }
+
+/* Mobile editor chrome: keep the canvas usable while exposing every action. */
+.editor .inspector-mobile-header { display: none; }
+@media (max-width: 850px) {
+  .editor .editor-head { position: relative; z-index: 30; }
+  .editor .editor-body { position: relative; overflow: hidden; }
+  .editor .editor-mobile-controls { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+  .editor .editor-mobile-controls button { display: grid; width: 40px; height: 40px; place-items: center; padding: 0; border: 1px solid var(--color-border); border-radius: 10px; color: var(--color-primary); background: var(--color-surface); cursor: pointer; }
+  .editor .editor-mobile-controls button:hover, .editor .editor-mobile-controls button:focus-visible { background: var(--color-primary-soft); outline: 2px solid var(--color-primary-soft); outline-offset: 2px; }
+  .editor .editor-mobile-controls svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+  .editor .editor-actions { position: absolute; z-index: 30; top: calc(100% + 8px); right: 12px; display: none; max-width: min(360px, calc(100vw - 24px)); padding: 10px; border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-surface); box-shadow: 0 14px 32px rgba(61, 52, 112, .18); }
+  .editor .editor-actions.mobile-actions-open { display: flex; flex-wrap: wrap; justify-content: flex-end; }
+  .editor .editor-actions .real-collaborator { display: none; }
+  .editor .editor-actions .editor-action-button { min-width: 42px; min-height: 40px; }
+  .editor .editor-actions.mobile-actions-open .action-label { display: inline; white-space: nowrap; }
+  .editor .toolbar { position: absolute; z-index: 20; top: 0; bottom: 0; left: 0; width: 76px; overflow-y: auto; transform: translateX(-110%); transition: transform .2s ease; box-shadow: 10px 0 25px rgba(61, 52, 112, .12); }
+  .editor .toolbar.toolbar-open { transform: translateX(0); }
+  .editor .inspector { position: absolute; z-index: 20; top: 0; right: 0; bottom: 0; width: min(400px, calc(100vw - 24px)); height: auto; transform: translateX(110%); transition: transform .2s ease; box-shadow: -10px 0 25px rgba(61, 52, 112, .14); }
+  .editor .inspector.inspector-open { transform: translateX(0); }
+  .editor .inspector-mobile-header { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 14px; border-bottom: 1px solid var(--color-border); color: var(--color-text); }
+  .editor .inspector-mobile-header button { width: 34px; height: 34px; border: 0; border-radius: 8px; color: var(--color-text-muted); background: transparent; font-size: 24px; cursor: pointer; }
+  .editor .inspector-mobile-header button:hover, .editor .inspector-mobile-header button:focus-visible { color: var(--color-primary); background: var(--color-primary-soft); outline: 2px solid var(--color-primary-soft); }
+  .editor .tabs button { flex: 1; min-width: 0; padding-inline: 6px; }
+}
+@media (max-width: 700px) {
+  .editor .editor-head { min-height: 72px; height: auto; flex-wrap: wrap; gap: 8px 10px; padding: 10px 12px; }
+  .editor .editor-brand { max-width: 116px; overflow: hidden; text-overflow: ellipsis; }
+  .editor .editor-title { flex: 1 1 120px; min-width: 0; gap: 2px; overflow: hidden; }
+  .editor .editor-title b, .editor .editor-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .editor .editor-title b { font-size: 14px; }
+  .editor .editor-title span { font-size: 10px; }
+  .editor .editor-mobile-controls { flex: 0 0 auto; }
+  .editor .editor-mobile-controls button { width: 38px; height: 38px; }
+  .editor .editor-actions.mobile-actions-open { right: 8px; left: 8px; max-width: none; justify-content: stretch; }
+  .editor .editor-actions.mobile-actions-open > * { flex: 1 1 calc(50% - 5px); }
+  .editor .editor-actions.mobile-actions-open .more-actions { flex-basis: 100%; }
+  .editor .editor-actions .editor-action-button { width: 100%; justify-content: center; }
+  .editor .editor-generator-button { display: inline-flex; }
+  .editor .canvas-actions { top: 10px; right: 10px; display: flex; gap: 2px; }
+  .editor .canvas-actions button { min-height: 36px; padding-inline: 9px; }
+  .editor .uml-class { width: 180px; }
+  .editor .inspect-content, .editor .ai-panel, .editor .history { padding: 18px 14px; gap: 14px; }
+  .editor .analysis-findings { max-height: none; }
+}
+@media (max-width: 380px) {
+  .editor .editor-brand { max-width: 84px; }
+  .editor .editor-mobile-controls { gap: 3px; }
+  .editor .editor-mobile-controls button { width: 34px; height: 34px; }
+  .editor .canvas-actions button:nth-child(2) { display: none; }
+}
 .project-chat .project-chat-header { position: relative; align-items: flex-start; }
 .project-chat .chat-connection-status { position: absolute; right: 54px; top: 8px; color: #8e849e; font-size: .66rem; text-transform: lowercase; }
 .project-chat .chat-close { display: grid; width: 34px; height: 34px; place-items: center; padding: 0; border-radius: 9px; }

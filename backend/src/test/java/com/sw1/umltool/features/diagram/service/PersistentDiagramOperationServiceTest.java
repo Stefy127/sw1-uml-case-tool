@@ -20,6 +20,10 @@ import com.sw1.umltool.features.diagram.operation.payload.DeleteClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.MoveClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.RenameClassPayload;
 import com.sw1.umltool.features.diagram.operation.payload.UpdateClassStylePayload;
+import com.sw1.umltool.features.diagram.operation.payload.AddAttributePayload;
+import com.sw1.umltool.features.diagram.operation.payload.UpdateAttributePayload;
+import com.sw1.umltool.features.diagram.model.canonical.UmlAttribute;
+import com.sw1.umltool.features.diagram.model.canonical.enums.Visibility;
 import com.sw1.umltool.features.diagram.repository.DiagramRepository;
 import com.sw1.umltool.features.diagram.validation.CanonicalModelValidator;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.Optional;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -53,6 +58,7 @@ class PersistentDiagramOperationServiceTest {
         service = new PersistentDiagramOperationService(repository, serializer, operationService);
         entity = persistedEntity(baseDiagram(), baseViewState());
         when(repository.findById("diagram-1")).thenReturn(Optional.of(entity));
+        when(repository.findByIdForUpdate("diagram-1")).thenReturn(Optional.of(entity));
         when(repository.save(any(DiagramEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
@@ -174,6 +180,22 @@ class PersistentDiagramOperationServiceTest {
     }
 
     @Test
+    void repairsLegacyUndoRedoVersionDriftWhenRequestTargetsPersistedVersion() {
+        entity.setVersion(15);
+        UmlDiagram staleCanonical = serializer.deserializeCanonical(entity.getCanonicalModelJson());
+        staleCanonical.setVersion(13);
+        entity.setCanonicalModelJson(serializer.serializeCanonical(staleCanonical));
+
+        var result = service.execute("diagram-1", operation("op-legacy", 15, DiagramOperationType.RENAME_CLASS,
+                RenameClassPayload.builder().classId("class-1").name("Cliente").build()));
+
+        assertEquals(16, result.getNewVersion());
+        UmlDiagram persisted = serializer.deserializeCanonical(entity.getCanonicalModelJson());
+        assertEquals(16, persisted.getVersion());
+        assertEquals("Cliente", persisted.getClasses().get(0).getName());
+    }
+
+    @Test
     void invalidOperationDoesNotPersist() {
         UmlDiagram diagram = serializer.deserializeCanonical(entity.getCanonicalModelJson());
         diagram.getClasses().add(UmlClass.builder().id("class-2").name("Order").build());
@@ -194,6 +216,42 @@ class PersistentDiagramOperationServiceTest {
 
         assertEquals("diagram-1", serializer.deserializeCanonical(entity.getCanonicalModelJson()).getId());
         assertEquals("diagram-1", serializer.deserializeViewState(entity.getViewStateJson()).getDiagramId());
+    }
+
+    @Test
+    void executesProposalBatchAtomicallyAndIncrementsVersionOnce() {
+        var attribute = UmlAttribute.builder().id("attribute-1").name("email").type("String")
+                .visibility(Visibility.PRIVATE).build();
+        var add = operation("op-add", 0, DiagramOperationType.ADD_ATTRIBUTE,
+                new AddAttributePayload("class-1", attribute));
+        var rename = operation("op-rename", 0, DiagramOperationType.UPDATE_ATTRIBUTE,
+                UpdateAttributePayload.builder().classId("class-1").attributeId("attribute-1")
+                        .name("correo").build());
+
+        service.executeBatch("diagram-1", List.of(add, rename), "user-1");
+
+        UmlDiagram result = serializer.deserializeCanonical(entity.getCanonicalModelJson());
+        assertEquals(1, entity.getVersion());
+        assertEquals("correo", result.getClasses().get(0).getAttributes().get(0).getName());
+        assertEquals("diagram-1", serializer.deserializeViewState(entity.getViewStateJson()).getDiagramId());
+    }
+
+    @Test
+    void failedProposalBatchDoesNotPersistPartialChanges() {
+        var add = operation("op-add", 0, DiagramOperationType.ADD_ATTRIBUTE,
+                new AddAttributePayload("class-1", UmlAttribute.builder().id("attribute-1")
+                        .name("email").type("String").visibility(Visibility.PRIVATE).build()));
+        var invalid = operation("op-invalid", 0, DiagramOperationType.UPDATE_ATTRIBUTE,
+                UpdateAttributePayload.builder().classId("class-1").attributeId("missing")
+                        .name("correo").build());
+
+        assertThrows(OperationApplicationException.class,
+                () -> service.executeBatch("diagram-1", List.of(add, invalid), "user-1"));
+
+        assertEquals(0, entity.getVersion());
+        assertTrue(serializer.deserializeCanonical(entity.getCanonicalModelJson()).getClasses().get(0)
+                .getAttributes().isEmpty());
+        verify(repository, never()).save(any(DiagramEntity.class));
     }
 
     private UmlDiagram baseDiagram() {

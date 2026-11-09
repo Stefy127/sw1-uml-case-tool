@@ -210,7 +210,7 @@ class ProjectServiceTest {
         org.mockito.ArgumentCaptor<DiagramEntity> captor = org.mockito.ArgumentCaptor.forClass(DiagramEntity.class);
         verify(diagramRepository).save(captor.capture());
         DiagramEntity duplicate = captor.getValue();
-        when(diagramRepository.findById(duplicate.getId())).thenReturn(java.util.Optional.of(duplicate));
+        when(diagramRepository.findByIdForUpdate(duplicate.getId())).thenReturn(java.util.Optional.of(duplicate));
 
         PersistentDiagramOperationService operationService = new PersistentDiagramOperationService(
                 diagramRepository, diagramStateSerializer,

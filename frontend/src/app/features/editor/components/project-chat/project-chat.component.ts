@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { AiContextScope, AiConversation, AiMemory, AiMemoryScope, AiMemoryType, AiMessage } from '../../models/ai-chat.model';
 import { AiChatService } from '../../services/ai-chat.service';
 import { CollaborationEvent, CollaborationService } from '../../services/collaboration.service';
+import { VoiceRecognitionService } from '../../services/voice-recognition.service';
 import { Subscription, finalize, timeout } from 'rxjs';
 import { AuthService } from '../../../auth/services/auth.service';
 
@@ -28,6 +29,8 @@ export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
   readonly error = signal('');
   readonly newMessages = signal(false);
   readonly aiGenerating = signal(false);
+  readonly voiceListening = signal(false);
+  readonly voiceError = signal('');
   readonly contextScope = signal<AiContextScope>('DIAGRAM');
   readonly memoryScope = signal<AiMemoryScope>('PROJECT');
   readonly memoryOpen = signal(false);
@@ -47,8 +50,10 @@ export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
   private pendingClientMessageContent: string | null = null;
   private aiGenerationTimer: ReturnType<typeof setTimeout> | null = null;
   private scrollFrame: number | null = null;
+  private voiceSubscription: Subscription | null = null;
+  private lastVoiceTranscript = '';
 
-  constructor(private readonly chat: AiChatService, private readonly collaboration: CollaborationService, private readonly auth: AuthService) {
+  constructor(private readonly chat: AiChatService, private readonly collaboration: CollaborationService, private readonly auth: AuthService, private readonly voiceRecognition: VoiceRecognitionService) {
     this.eventsSubscription = this.collaboration.events.subscribe(event => this.handleCollaborationEvent(event));
   }
 
@@ -69,6 +74,7 @@ export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.eventsSubscription.unsubscribe();
+    this.stopVoiceRecognition();
     this.collaboration.unsubscribeProject(this.projectId());
     if (this.aiGenerationTimer) clearTimeout(this.aiGenerationTimer);
     if (this.scrollFrame !== null) cancelAnimationFrame(this.scrollFrame);
@@ -76,6 +82,7 @@ export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
 
   setMode(privateChat: boolean): void {
     if (this.privateChat() === privateChat || this.loading() || this.sending()) return;
+    this.stopVoiceRecognition();
     if (!this.privateChat()) this.collaboration.unsubscribeProject(this.projectId());
     this.privateChat.set(privateChat);
     this.loadConversation();
@@ -239,8 +246,57 @@ export class ProjectChatComponent implements AfterViewInit, OnInit, OnDestroy {
   }
 
   closePanel(): void {
+    this.stopVoiceRecognition();
     this.collaboration.unsubscribeProject(this.projectId());
     this.close.emit();
+  }
+
+  toggleVoiceRecognition(): void {
+    if (this.voiceListening()) {
+      this.stopVoiceRecognition();
+      return;
+    }
+    if (!this.voiceRecognition.isSupported()) {
+      this.voiceError.set('El reconocimiento de voz no está disponible en este navegador.');
+      return;
+    }
+    this.voiceError.set('');
+    this.lastVoiceTranscript = '';
+    this.voiceListening.set(true);
+    this.voiceSubscription?.unsubscribe();
+    this.voiceSubscription = this.voiceRecognition.listen().subscribe({
+      next: event => {
+        if (event.type === 'result' && event.text?.trim()) {
+          const transcript = event.text.trim();
+          if (transcript === this.lastVoiceTranscript) return;
+          this.lastVoiceTranscript = transcript;
+          this.appendVoiceTranscript(transcript);
+        }
+        if (event.type === 'error') {
+          this.voiceError.set(event.message ?? 'No se pudo reconocer la voz.');
+          this.voiceListening.set(false);
+        }
+        if (event.type === 'end') this.voiceListening.set(false);
+      },
+      error: () => {
+        this.voiceError.set('No se pudo reconocer la voz.');
+        this.voiceListening.set(false);
+      },
+      complete: () => this.voiceListening.set(false),
+    });
+  }
+
+  private stopVoiceRecognition(): void {
+    this.voiceRecognition.stop();
+    this.voiceSubscription?.unsubscribe();
+    this.voiceSubscription = null;
+    this.voiceListening.set(false);
+    this.lastVoiceTranscript = '';
+  }
+
+  private appendVoiceTranscript(transcript: string): void {
+    const current = this.draft.trimEnd();
+    this.draft = current ? `${current} ${transcript}` : transcript;
   }
 
   private loadConversation(): void {

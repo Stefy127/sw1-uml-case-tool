@@ -7,6 +7,7 @@ import { AiChatService } from '../../services/ai-chat.service';
 import { CollaborationEvent } from '../../services/collaboration.service';
 import { CollaborationService } from '../../services/collaboration.service';
 import { AuthService } from '../../../auth/services/auth.service';
+import { VoiceRecognitionService } from '../../services/voice-recognition.service';
 
 describe('ProjectChatComponent', () => {
   it('renders basic Markdown safely without exposing raw HTML', () => {
@@ -208,5 +209,42 @@ describe('ProjectChatComponent', () => {
     events.next({ type: 'AI_MEMORY_PROJECT_CREATED', projectId: 'p1', memory });
     created.next(memory);
     expect(fixture.componentInstance.memories()).toHaveLength(1);
+  });
+
+  it('adds dictated text to the draft without sending it automatically', async () => {
+    const voiceEvents = new Subject<{ type: 'result' | 'error' | 'end'; text?: string; message?: string }>();
+    const voice = { isSupported: vi.fn(() => true), listen: vi.fn(() => voiceEvents), stop: vi.fn() };
+    const collaboration = { events: new Subject<CollaborationEvent>(), status: signal<'DISCONNECTED'>('DISCONNECTED'), subscribeProject: vi.fn(), unsubscribeProject: vi.fn(), sendChatMessage: vi.fn(() => null) };
+    const chat = { getConversation: vi.fn(() => of({ id: 'c1', projectId: 'p1', type: 'GROUP' as const })), getMessages: vi.fn(() => of({ messages: [], nextCursor: null })), listMemories: vi.fn(() => of([])), sendMessage: vi.fn() };
+    await TestBed.configureTestingModule({ imports: [ProjectChatComponent], providers: [
+      { provide: AiChatService, useValue: chat }, { provide: CollaborationService, useValue: collaboration },
+      { provide: AuthService, useValue: { currentUser: signal(null) } }, { provide: VoiceRecognitionService, useValue: voice },
+    ] }).compileComponents();
+    const fixture = TestBed.createComponent(ProjectChatComponent); fixture.componentRef.setInput('projectId', 'p1'); fixture.detectChanges(); await fixture.whenStable();
+    const page = fixture.componentInstance; page.draft = 'Hola'; page.toggleVoiceRecognition();
+    voiceEvents.next({ type: 'result', text: 'mundo' });
+    voiceEvents.next({ type: 'result', text: 'mundo' });
+    expect(page.draft).toBe('Hola mundo');
+    expect(page.voiceListening()).toBe(true);
+    expect(chat.sendMessage).not.toHaveBeenCalled();
+    page.toggleVoiceRecognition();
+    expect(voice.stop).toHaveBeenCalled();
+    expect(page.voiceListening()).toBe(false);
+  });
+
+  it('stops dictation when changing mode or closing the chat', async () => {
+    const voiceEvents = new Subject<{ type: 'result' | 'error' | 'end'; text?: string; message?: string }>();
+    const voice = { isSupported: vi.fn(() => true), listen: vi.fn(() => voiceEvents), stop: vi.fn() };
+    const collaboration = { events: new Subject<CollaborationEvent>(), status: signal<'DISCONNECTED'>('DISCONNECTED'), subscribeProject: vi.fn(), unsubscribeProject: vi.fn(), sendChatMessage: vi.fn(() => null) };
+    const chat = { getConversation: vi.fn(() => of({ id: 'c1', projectId: 'p1', type: 'GROUP' as const })), getMessages: vi.fn(() => of({ messages: [], nextCursor: null })), listMemories: vi.fn(() => of([])), sendMessage: vi.fn() };
+    await TestBed.configureTestingModule({ imports: [ProjectChatComponent], providers: [
+      { provide: AiChatService, useValue: chat }, { provide: CollaborationService, useValue: collaboration },
+      { provide: AuthService, useValue: { currentUser: signal(null) } }, { provide: VoiceRecognitionService, useValue: voice },
+    ] }).compileComponents();
+    const fixture = TestBed.createComponent(ProjectChatComponent); fixture.componentRef.setInput('projectId', 'p1'); fixture.detectChanges(); await fixture.whenStable();
+    const page = fixture.componentInstance; page.toggleVoiceRecognition(); page.setMode(true);
+    expect(voice.stop).toHaveBeenCalled();
+    page.toggleVoiceRecognition(); page.closePanel();
+    expect(voice.stop.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 });

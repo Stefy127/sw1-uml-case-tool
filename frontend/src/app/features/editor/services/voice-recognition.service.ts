@@ -26,6 +26,7 @@ export class VoiceRecognitionService {
     return new Observable((subscriber) => {
       const Recognition = this.constructorForBrowser();
       if (!Recognition) { subscriber.next({ type: 'error', message: 'El reconocimiento de voz no está disponible en este navegador.' }); subscriber.complete(); return; }
+      this.stop();
       const recognition = new Recognition();
       this.recognition = recognition;
       recognition.lang = 'es-BO';

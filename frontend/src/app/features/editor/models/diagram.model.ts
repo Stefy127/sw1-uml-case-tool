@@ -90,6 +90,13 @@ export interface DiagramViewState {
   relations: RelationViewState[];
 }
 
+export interface CreateDiagramRequest {
+  projectId: string;
+  name: string;
+  canonicalModel?: UmlDiagram;
+  viewState?: DiagramViewState;
+}
+
 export interface NodeViewState {
   classId: string;
   x: number;

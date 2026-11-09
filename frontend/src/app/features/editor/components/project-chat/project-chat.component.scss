@@ -28,7 +28,14 @@ h2 { margin: 4px 0 0; color: #24304f; font-size: 1.2rem; }
 .chat-load-more { margin: 12px 16px 0; border: 0; background: transparent; color: #765aa7; cursor: pointer; }
 .chat-composer { padding: 14px 16px 16px; border-top: 1px solid #eee8f7; }
 .chat-composer label { display: block; margin-bottom: 6px; color: #514762; font-size: .78rem; font-weight: 700; }
-.chat-composer textarea { width: 100%; box-sizing: border-box; resize: vertical; border: 1px solid #d9cfea; border-radius: 11px; padding: 10px; font: inherit; }
+.chat-composer-input { position: relative; }
+.chat-composer textarea { width: 100%; box-sizing: border-box; resize: vertical; border: 1px solid #d9cfea; border-radius: 11px; padding: 10px 48px 10px 10px; font: inherit; }
+.chat-voice-button { position: absolute; right: 8px; bottom: 8px; display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 9px; color: #765aa7; background: #f0eafb; cursor: pointer; }
+.chat-voice-button svg { width: 18px; height: 18px; }
+.chat-voice-button:hover, .chat-voice-button:focus-visible { background: #e4d9fa; }
+.chat-voice-button.listening { color: #fff; background: #a34857; }
+.chat-voice-button:focus-visible { outline: 2px solid #765aa7; outline-offset: 2px; }
+.chat-voice-status { display: block; margin-top: 5px; color: #765aa7; font-size: .75rem; }
 .chat-composer-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
 .chat-composer-footer small { color: #91879c; }
 @media (max-width: 600px) { .project-chat { top: 66px; right: 16px; height: calc(100vh - 82px); } }
