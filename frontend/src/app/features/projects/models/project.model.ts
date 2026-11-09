@@ -11,6 +11,9 @@ export interface CreateProjectRequest {
   name: string;
   description?: string;
   ownerUserId: string;
+  diagramName?: string;
+  canonicalModel?: import('../../editor/models/diagram.model').UmlDiagram;
+  viewState?: import('../../editor/models/diagram.model').DiagramViewState;
 }
 export interface UpdateProjectRequest {
   name?: string;

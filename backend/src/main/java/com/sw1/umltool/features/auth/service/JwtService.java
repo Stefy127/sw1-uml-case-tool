@@ -18,7 +18,10 @@ public class JwtService {
 
     public JwtService(@Value("${auth.jwt.secret}") String secret,
                       @Value("${auth.jwt.expiration-seconds:86400}") long expirationSeconds) {
-        if (secret == null || secret.length() < 32) throw new IllegalStateException("JWT secret must contain at least 32 characters");
+        if (secret == null || secret.isBlank() || secret.length() < 32
+                || secret.equals("sw1-development-secret-change-me-32chars")) {
+            throw new IllegalStateException("JWT secret must be explicitly configured with at least 32 characters");
+        }
         this.secret = secret.getBytes(StandardCharsets.UTF_8);
         this.expirationSeconds = expirationSeconds;
     }

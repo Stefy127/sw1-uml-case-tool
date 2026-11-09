@@ -39,9 +39,11 @@ public class DiagramController {
 
     @PostMapping
     public ResponseEntity<DiagramDetailResponse> create(@Valid @RequestBody CreateDiagramRequest request, Authentication authentication) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(toDetail(authentication == null
-                ? diagramService.createDiagram(request.getProjectId(), request.getName())
-                : diagramService.createDiagram(request.getProjectId(), request.getName(), authentication.getName())));
+        boolean hasInitialState = request.getCanonicalModel() != null || request.getViewState() != null;
+        var created = authentication == null
+                ? (hasInitialState ? diagramService.createDiagram(request.getProjectId(), request.getName(), request.getCanonicalModel(), request.getViewState()) : diagramService.createDiagram(request.getProjectId(), request.getName()))
+                : (hasInitialState ? diagramService.createDiagram(request.getProjectId(), request.getName(), authentication.getName(), request.getCanonicalModel(), request.getViewState()) : diagramService.createDiagram(request.getProjectId(), request.getName(), authentication.getName()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(toDetail(created));
     }
 
     @GetMapping

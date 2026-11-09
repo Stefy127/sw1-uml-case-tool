@@ -46,7 +46,7 @@ public class AiVoiceInterpretationService {
 
     public AiVoiceInterpretResponse interpret(AiVoiceInterpretRequest request) {
         if (webhookUrl.isBlank()) throw new IllegalStateException("El servicio de interpretacion por IA no esta configurado.");
-        AiVoiceInterpretRequest safeRequest = new AiVoiceInterpretRequest(request.text(), request.language() == null ? "es-BO" : request.language(), request.diagramContext());
+        AiVoiceInterpretRequest safeRequest = new AiVoiceInterpretRequest(request.text(), request.language() == null ? "es-BO" : request.language(), request.diagramContext(), request.projectId(), request.diagramId());
         long startedAt = System.nanoTime();
         log.info("N8N voice request started url={} connectTimeout={}s readTimeout={}s",
                 sanitizedUrl(), connectTimeoutSeconds, readTimeoutSeconds);

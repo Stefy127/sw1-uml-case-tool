@@ -116,7 +116,7 @@ public class XmiParser {
                 String source = sourceElement == null ? null : resolveReference(sourceElement, ids);
                 String target = targetElement == null ? null : resolveReference(targetElement, ids);
                 if (source == null || target == null) {
-                    warnings.add("Clase de asociaciÃ³n con extremos no resueltos");
+                    warnings.add("Clase de asociación con extremos no resueltos");
                     continue;
                 }
                 String relationId = UUID.randomUUID().toString();

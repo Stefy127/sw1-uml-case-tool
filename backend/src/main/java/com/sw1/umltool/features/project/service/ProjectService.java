@@ -28,6 +28,7 @@ import com.sw1.umltool.features.diagram.model.persistence.DiagramEntity;
 import com.sw1.umltool.features.diagram.model.canonical.UmlDiagram;
 import com.sw1.umltool.features.diagram.model.view.DiagramViewState;
 import com.sw1.umltool.features.diagram.service.DiagramStateSerializer;
+import com.sw1.umltool.features.diagram.validation.CanonicalModelValidator;
 import com.sw1.umltool.features.project.model.ProjectShareMode;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,7 @@ public class ProjectService {
     private final ProjectAccessService access;
     private final DiagramRepository diagramRepository;
     private final DiagramStateSerializer diagramStateSerializer;
+    private final CanonicalModelValidator canonicalModelValidator;
 
     public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository projectMemberRepository) {
         this.projectRepository = projectRepository;
@@ -49,10 +51,13 @@ public class ProjectService {
         this.access = null;
         this.diagramRepository = null;
         this.diagramStateSerializer = null;
+        this.canonicalModelValidator = null;
     }
 
     @Autowired
-    public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository members, UserRepository users, ProjectAccessService access, DiagramRepository diagramRepository, DiagramStateSerializer diagramStateSerializer) { this.projectRepository=projectRepository; this.projectMemberRepository=members; this.userRepository=users; this.access=access; this.diagramRepository=diagramRepository; this.diagramStateSerializer=diagramStateSerializer; }
+    public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository members, UserRepository users, ProjectAccessService access, DiagramRepository diagramRepository, DiagramStateSerializer diagramStateSerializer, CanonicalModelValidator canonicalModelValidator) { this.projectRepository=projectRepository; this.projectMemberRepository=members; this.userRepository=users; this.access=access; this.diagramRepository=diagramRepository; this.diagramStateSerializer=diagramStateSerializer; this.canonicalModelValidator=canonicalModelValidator; }
+
+    public ProjectService(ProjectRepository projectRepository, ProjectMemberRepository members, UserRepository users, ProjectAccessService access, DiagramRepository diagramRepository, DiagramStateSerializer diagramStateSerializer) { this(projectRepository, members, users, access, diagramRepository, diagramStateSerializer, new CanonicalModelValidator()); }
 
     @Transactional
     public ProjectEntity updateProject(String projectId, String userId, UpdateProjectRequest request) {
@@ -129,6 +134,11 @@ public class ProjectService {
 
     @Transactional
     public ProjectEntity createProject(String name, String description, String ownerUserId) {
+        return createProject(name, description, ownerUserId, null, null, null);
+    }
+
+    @Transactional
+    public ProjectEntity createProject(String name, String description, String ownerUserId, String diagramName, UmlDiagram initialCanonicalModel, DiagramViewState initialViewState) {
         if (isBlank(name)) throw new IllegalArgumentException("Project name is required");
         if (isBlank(ownerUserId)) throw new IllegalArgumentException("Owner user id is required");
 
@@ -150,6 +160,27 @@ public class ProjectService {
                 .role(ProjectMemberRole.OWNER)
                 .createdAt(LocalDateTime.now())
                 .build());
+
+        if (initialCanonicalModel != null) {
+            String createdDiagramName = isBlank(diagramName) ? name + " · Modelo UML" : diagramName;
+            String diagramId = UUID.randomUUID().toString();
+            initialCanonicalModel.setId(diagramId);
+            initialCanonicalModel.setName(createdDiagramName);
+            initialCanonicalModel.setVersion(0);
+            if (initialCanonicalModel.getClasses() == null) initialCanonicalModel.setClasses(new java.util.ArrayList<>());
+            if (initialCanonicalModel.getRelations() == null) initialCanonicalModel.setRelations(new java.util.ArrayList<>());
+            if (initialCanonicalModel.getAssociationClassLinks() == null) initialCanonicalModel.setAssociationClassLinks(new java.util.ArrayList<>());
+            var validation = canonicalModelValidator.validate(initialCanonicalModel);
+            if (!validation.isValid()) throw new IllegalArgumentException("El modelo inicial del diagrama no es válido: " + validation.getErrors().get(0).getMessage());
+            DiagramViewState viewState = initialViewState == null ? DiagramViewState.builder().build() : initialViewState;
+            viewState.setDiagramId(diagramId);
+            if (viewState.getNodes() == null) viewState.setNodes(new java.util.ArrayList<>());
+            if (viewState.getRelations() == null) viewState.setRelations(new java.util.ArrayList<>());
+            LocalDateTime diagramNow = LocalDateTime.now();
+            diagramRepository.save(DiagramEntity.builder().id(diagramId).projectId(savedProject.getId()).name(createdDiagramName).version(0)
+                    .canonicalModelJson(diagramStateSerializer.serializeCanonical(initialCanonicalModel))
+                    .viewStateJson(diagramStateSerializer.serializeViewState(viewState)).createdAt(diagramNow).updatedAt(diagramNow).build());
+        }
 
         return savedProject;
     }

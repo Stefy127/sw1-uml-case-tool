@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ActivatedRoute, provideRouter } from '@angular/router';
+import { ActivatedRoute, provideRouter, Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { NEVER, of, throwError } from 'rxjs';
 
@@ -51,6 +51,29 @@ function configure(operationService: object, current = detail, xmiImport: object
 }
 
 describe('EditorPageComponent', () => {
+  it('navigates from the breadcrumb to the loaded diagram project', async () => {
+    await configure({ execute: () => NEVER }, { ...detail, projectId: 'small-project' });
+    const fixture = TestBed.createComponent(EditorPageComponent);
+    fixture.detectChanges();
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    fixture.nativeElement.querySelector('.editor-brand').click();
+
+    expect(navigate).toHaveBeenCalledWith(['/projects', 'small-project']);
+  });
+
+  it('uses the projects fallback when the loaded diagram has no project id', async () => {
+    await configure({ execute: () => NEVER }, { ...detail, projectId: '' });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    page.navigateToProject();
+
+    expect(navigate).toHaveBeenCalledWith(['/projects']);
+  });
+
   it('opens analysis in the IA panel and uses the project id from the loaded diagram', async () => {
     let analyzedProjectId = '';
     await configure({ execute: () => NEVER }, detail, {}, {}, undefined, undefined, undefined, {
@@ -334,6 +357,63 @@ describe('EditorPageComponent', () => {
     fixture.detectChanges();
     expect(page.changeProposalFormOpen()).toBe(true);
     expect(fixture.nativeElement.querySelector('#change-proposal-instruction')).not.toBeNull();
+  });
+
+  it('confirms and applies only the selected proposals through the backend endpoint', async () => {
+    const current = { ...detail, canonicalModel: { ...detail.canonicalModel, classes: [{ id: 'class-1', name: 'Pedido', isAbstract: false, attributes: [], methods: [] }] } };
+    let request: any = null;
+    await configure({ execute: () => NEVER }, current, {}, {}, undefined, undefined, undefined, undefined, undefined, {
+      propose: () => of({ projectId: 'p1', diagramId: 'd1', diagramVersion: 7, isStale: false, proposals: [
+        { proposalId: 'proposal-1', operation: 'ADD_ATTRIBUTE', targetElementId: 'class-1', targetElementName: 'Pedido', targetAttributeId: null, oldValue: null, newValue: 'codigoPedido: String', reason: 'Revisar', requiresBusinessConfirmation: false },
+        { proposalId: 'proposal-2', operation: 'ADD_ATTRIBUTE', targetElementId: 'class-1', targetElementName: 'Pedido', targetAttributeId: null, oldValue: null, newValue: 'fecha: Date', reason: 'Revisar', requiresBusinessConfirmation: false },
+      ] }),
+      apply: (_projectId: string, body: any) => {
+        request = body;
+        return of({ requestId: body.requestId, projectId: 'p1', diagramId: 'd1', previousVersion: 7, newVersion: 8, appliedOperations: 1,
+          canonicalModel: { ...current.canonicalModel, version: 8, classes: [{ ...current.canonicalModel.classes[0], attributes: [{ id: 'new-id', name: 'codigoPedido', type: 'String', visibility: 'PRIVATE', isStatic: false, isFinal: false, defaultValue: null, primaryKey: false }] }] },
+          viewState: current.viewState });
+      },
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.changeProposalInstruction.set('Agregar atributos');
+    page.prepareChanges();
+    const proposals = page.changeProposalResult()!.proposals;
+    page.toggleChangeProposal(proposals[1]);
+    page.requestChangeProposalApplication();
+    expect(page.changeProposalConfirmOpen()).toBe(true);
+    page.confirmChangeProposalApplication();
+
+    expect(request.confirmed).toBe(true);
+    expect(request.baseVersion).toBe(7);
+    expect(request.operations).toHaveLength(1);
+    expect(request.operations[0].proposalId).toBe('proposal-1');
+    expect(page.diagram()?.version).toBe(8);
+    expect(page.changeProposalResult()?.diagramVersion).toBe(7);
+    expect(page.changeProposalStale()).toBe(true);
+    expect(page.changeProposalCanApply()).toBe(false);
+    expect(page.changeProposalApplyMessage()).toContain('1 cambio aplicado');
+  });
+
+  it('does not open application confirmation for a viewer or stale proposals', async () => {
+    const current = { ...detail, canonicalModel: { ...detail.canonicalModel, classes: [{ id: 'class-1', name: 'Pedido', isAbstract: false, attributes: [], methods: [] }] } };
+    let calls = 0;
+    await configure({ execute: () => NEVER }, current, {}, {}, { getMyRole: () => of({ role: 'VIEWER' }), getMembers: () => of([]) }, undefined, undefined, undefined, undefined, {
+      propose: () => of({ projectId: 'p1', diagramId: 'd1', diagramVersion: 7, isStale: false, proposals: [{
+        proposalId: 'proposal-1', operation: 'ADD_ATTRIBUTE', targetElementId: 'class-1', targetElementName: 'Pedido', targetAttributeId: null, oldValue: null, newValue: 'codigo: String', reason: 'Revisar', requiresBusinessConfirmation: false,
+      }] }),
+      apply: () => { calls++; return NEVER; },
+    });
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+    page.changeProposalInstruction.set('Agregar codigo');
+    page.prepareChanges();
+    page.requestChangeProposalApplication();
+
+    expect(page.changeProposalConfirmOpen()).toBe(false);
+    expect(calls).toBe(0);
+    page.currentUserRole.set('OWNER');
+    page.diagram.update(value => value ? { ...value, canonicalModel: { ...value.canonicalModel, name: 'Cambio externo' } } : value);
+    page.requestChangeProposalApplication();
+    expect(page.changeProposalConfirmOpen()).toBe(false);
   });
 
   it('marks suggestions stale after the canonical model changes', async () => {
@@ -725,6 +805,21 @@ describe('EditorPageComponent', () => {
     page.toggleInspector();
     expect(page.toolbarOpen()).toBe(true);
     expect(page.inspectorOpen()).toBe(true);
+  });
+
+  it('opens mobile actions and closes transient menus together', async () => {
+    await configure({ execute: () => NEVER }, detail);
+    const page = TestBed.createComponent(EditorPageComponent).componentInstance;
+
+    page.toggleMobileActions();
+    page.toggleMoreActions();
+
+    expect(page.mobileActionsOpen()).toBe(true);
+    expect(page.moreActionsOpen()).toBe(true);
+
+    page.closeTransientMenus();
+    expect(page.mobileActionsOpen()).toBe(false);
+    expect(page.moreActionsOpen()).toBe(false);
   });
 
   it('renders SVG icons for the editor actions and mobile panel controls', async () => {

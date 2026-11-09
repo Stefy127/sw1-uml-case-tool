@@ -42,9 +42,11 @@ public class ProjectController {
 
     @PostMapping
     public ResponseEntity<ProjectResponse> create(@Valid @RequestBody CreateProjectRequest request) {
+        var project = request.getCanonicalModel() == null
+                ? projectService.createProject(request.getName(), request.getDescription(), request.getOwnerUserId())
+                : projectService.createProject(request.getName(), request.getDescription(), request.getOwnerUserId(), request.getDiagramName(), request.getCanonicalModel(), request.getViewState());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ProjectMapper.toResponse(projectService.createProject(
-                        request.getName(), request.getDescription(), request.getOwnerUserId())));
+                .body(ProjectMapper.toResponse(project));
     }
 
     @GetMapping

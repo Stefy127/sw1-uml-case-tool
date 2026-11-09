@@ -68,7 +68,7 @@ public class AiSuggestionService {
             if (node == null || !node.isObject() || !node.has("suggestions")) throw new IllegalArgumentException();
             return node;
         } catch (Exception exception) {
-            throw new AiAnalysisException("La respuesta de sugerencias no contiene JSON vÃ¡lido.", exception);
+            throw new AiAnalysisException("La respuesta de sugerencias no contiene JSON válido.", exception);
         }
     }
 
@@ -76,7 +76,7 @@ public class AiSuggestionService {
                                            AiAnalysisContextService.PreparedContext prepared) {
         JsonNode values = node.get("suggestions");
         if (!values.isArray() || values.size() > MAX_SUGGESTIONS) {
-            throw new AiAnalysisException("La respuesta contiene demasiadas sugerencias o un formato invÃ¡lido.");
+            throw new AiAnalysisException("La respuesta contiene demasiadas sugerencias o un formato inválido.");
         }
         List<AiSuggestion> result = new ArrayList<>();
         Set<String> keys = new HashSet<>();
@@ -123,7 +123,7 @@ public class AiSuggestionService {
                 "No modifiques el diagrama, no inventes clases existentes ni presentes reglas de negocio como hechos. " +
                 "Prioriza como maximo 3 sugerencias utiles y condicionales; no propongas metodos solo porque no existan, no cambies multiplicidades validas ni sugieras agregacion/composicion sin evidencia de pertenencia o ciclo de vida. " +
                 "No generes sugerencias para completar una cantidad. Si falta contexto del negocio, dilo explícitamente. " +
-                "En el primer alcance solo acepta ideas opcionales de atributos o preguntas generales; no propongas operaciones, relaciones, multiplicidades, agregaciÃ³n ni composiciÃ³n. " +
+                "En el primer alcance solo acepta ideas opcionales de atributos o preguntas generales; no propongas operaciones, relaciones, multiplicidades, agregación ni composición. " +
                 "Devuelve únicamente JSON con: {\"suggestions\":[{\"category\":\"ATTRIBUTE|GENERAL\",\"elementId\":\"id existente o null\",\"title\":\"...\",\"reason\":\"...\",\"proposal\":\"...\",\"requiresBusinessContext\":true}]}";
     }
 }

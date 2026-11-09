@@ -36,6 +36,7 @@
   @if (aiGenerating()) { <p class="chat-ai-status" role="status">La IA está pensando...</p> }
   @if (loading() && !messages().length) { <div class="chat-state">Cargando historial...</div> }
   @if (error()) { <p class="chat-error">{{ error() }}</p> }
+  @if (voiceError()) { <p class="chat-error" role="alert">{{ voiceError() }}</p> }
   @if (nextCursor()) { <button type="button" class="chat-load-more" [disabled]="loading()" (click)="loadOlder()">Cargar mensajes anteriores</button> }
   <div #messagesContainer class="chat-messages" aria-live="polite" (scroll)="onMessagesScroll()">
     @for (message of messages(); track message.id) {
@@ -50,7 +51,8 @@
 
   <form class="chat-composer" (ngSubmit)="send()">
     <label for="project-chat-message">Mensaje</label>
-    <textarea id="project-chat-message" name="message" [(ngModel)]="draft" maxlength="4000" rows="3" placeholder="Escribe un mensaje..." (keydown)="onComposerKeydown($event)" aria-describedby="project-chat-hint"></textarea>
+    <div class="chat-composer-input"><textarea id="project-chat-message" name="message" [(ngModel)]="draft" maxlength="4000" rows="3" placeholder="Escribe un mensaje..." (keydown)="onComposerKeydown($event)" aria-describedby="project-chat-hint"></textarea><button type="button" class="chat-voice-button" [class.listening]="voiceListening()" [attr.aria-pressed]="voiceListening()" [attr.aria-label]="voiceListening() ? 'Detener dictado' : 'Dictar mensaje'" [title]="voiceListening() ? 'Detener dictado' : 'Dictar mensaje'" (click)="toggleVoiceRecognition()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-12 0m6 6v4m-3 0h6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" /></svg></button></div>
+    @if (voiceListening()) { <small class="chat-voice-status" role="status">Escuchando...</small> }
     <small id="project-chat-hint" class="chat-composer-hint">Enter para enviar · Shift+Enter para una nueva línea</small>
     <div class="chat-composer-footer"><small>{{ draft.length }}/4000</small><button class="btn btn-primary" type="submit" [disabled]="!draft.trim() || sending() || loading()">{{ sending() ? 'Enviando...' : 'Enviar' }}</button></div>
   </form>

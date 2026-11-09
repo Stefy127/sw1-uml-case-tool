@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { DecimalPipe, KeyValuePipe } from '@angular/common';
+import { DatePipe, DecimalPipe, KeyValuePipe } from '@angular/common';
 import { Component, computed, inject, OnDestroy, signal } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { DEV_USER_ID } from '../../../../core/config/dev-user.config';
 import {
@@ -41,12 +41,19 @@ import { ShareProjectModalComponent } from '../../../projects/components/share-p
 import { ExportMenuComponent } from '../../components/export-menu/export-menu.component';
 import { BackendGeneratorService, BackendGenerationRequest } from '../../services/backend-generator.service';
 import { ProjectChatComponent } from '../../components/project-chat/project-chat.component';
+import { DiagramHistoryService } from '../../services/diagram-history.service';
+import { DiagramHistoryAvailability, DiagramHistoryEntry, DiagramHistoryPage } from '../../models/diagram-history.model';
 import { AiAnalysisService } from '../../services/ai-analysis.service';
 import { AnalysisFinding, AnalysisResponse } from '../../models/ai-analysis.model';
 import { AiSuggestion } from '../../models/ai-suggestion.model';
 import { AiSuggestionsService } from '../../services/ai-suggestions.service';
 import { AiChangeProposalsService } from '../../services/ai-change-proposals.service';
-import { AiChangeProposal, AiChangeProposalResponse } from '../../models/ai-change-proposal.model';
+import {
+  AiChangeProposal,
+  AiChangeProposalApplyOperation,
+  AiChangeProposalApplyRequest,
+  AiChangeProposalResponse,
+} from '../../models/ai-change-proposal.model';
 
 type EditorTool = 'SELECT' | 'CLASS' | 'RELATION';
 type RelationType =
@@ -173,12 +180,13 @@ type RelationPropertyOperation =
 
 @Component({
   selector: 'app-editor-page',
-  imports: [RouterLink, DecimalPipe, KeyValuePipe, ShareProjectModalComponent, ExportMenuComponent, ProjectChatComponent],
+  imports: [DatePipe, DecimalPipe, KeyValuePipe, ShareProjectModalComponent, ExportMenuComponent, ProjectChatComponent],
   templateUrl: './editor-page.component.html',
   styleUrl: './editor-page.component.scss',
 })
 export class EditorPageComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly diagramService = inject(DiagramService);
   private readonly operationService = inject(DiagramOperationService);
   readonly collaboration = inject(CollaborationService, { optional: true });
@@ -192,6 +200,7 @@ export class EditorPageComponent implements OnDestroy {
   private readonly aiAnalysisService = inject(AiAnalysisService);
   private readonly aiSuggestionsService = inject(AiSuggestionsService);
   private readonly aiChangeProposalsService = inject(AiChangeProposalsService);
+  private readonly historyService = inject(DiagramHistoryService);
   private readonly projectService = inject(ProjectService, { optional: true });
   private readonly defaultNodeWidth = 240;
   private readonly defaultNodeHeight = 180;
@@ -215,6 +224,7 @@ export class EditorPageComponent implements OnDestroy {
   readonly shareOpen = signal(false);
   readonly chatOpen = signal(false);
   readonly moreActionsOpen = signal(false);
+  readonly mobileActionsOpen = signal(false);
   readonly analysisOpen = signal(false);
   readonly aiMode = signal<'VALIDATE' | 'SUGGEST' | 'PROPOSE'>('VALIDATE');
   readonly analysisLoading = signal(false);
@@ -234,8 +244,13 @@ export class EditorPageComponent implements OnDestroy {
   readonly changeProposalFormOpen = signal(true);
   readonly changeProposalCustomInstructionOpen = signal(false);
   readonly changeProposalSubmittedInstruction = signal('');
+  readonly changeProposalConfirmOpen = signal(false);
+  readonly changeProposalApplying = signal(false);
+  readonly changeProposalApplyError = signal('');
+  readonly changeProposalApplyMessage = signal('');
   readonly changeProposalTargetClassId = signal<string | null | undefined>(undefined);
   private readonly changeProposalEdits = signal<Record<string, ChangeProposalEdit>>({});
+  private changeProposalApplyAttempt: { fingerprint: string; requestId: string } | null = null;
   readonly changeProposalTargetClasses = computed(() => this.diagram()?.canonicalModel.classes ?? []);
   readonly changeProposalTargetClass = computed(() => {
     const targetId = this.changeProposalTargetClassId() === undefined ? this.selectedClassId() : this.changeProposalTargetClassId();
@@ -279,6 +294,16 @@ export class EditorPageComponent implements OnDestroy {
     const submitted = this.changeProposalSubmittedInstruction();
     return !!submitted && submitted !== this.changeProposalInstruction().trim();
   });
+  readonly selectedChangeProposalCount = computed(() => Object.values(this.changeProposalEdits()).filter(edit => edit.selected && !edit.discarded).length);
+  readonly changeProposalCanApply = computed(() =>
+    !this.isReadOnly()
+    && (this.currentUserRole() === 'OWNER' || this.currentUserRole() === 'EDITOR')
+    && !!this.changeProposalResult()
+    && !this.changeProposalStale()
+    && !this.changeProposalInstructionChanged()
+    && this.selectedChangeProposalCount() > 0
+    && this.selectedChangeProposalsAreValid(),
+  );
   readonly toolbarOpen = signal(false);
   readonly inspectorOpen = signal(false);
   readonly pendingRelationDeletion = signal<UmlRelation | null>(null);
@@ -453,6 +478,12 @@ export class EditorPageComponent implements OnDestroy {
       .filter((item): item is RenderedAssociationClassLink => item !== null);
   });
   tab = 'Propiedades';
+  readonly historyPage = signal<DiagramHistoryPage | null>(null);
+  readonly historyLoading = signal(false);
+  readonly historyError = signal('');
+  readonly historyAvailability = signal<DiagramHistoryAvailability | null>(null);
+  readonly historyActionLoading = signal<'UNDO' | 'REDO' | null>(null);
+  readonly historyPageSize = 25;
   tools = ['⌁', '□', '⌁', '◇', '◈', '↗', '⇢'];
   toolLabels = [
     'Seleccionar',
@@ -501,6 +532,8 @@ export class EditorPageComponent implements OnDestroy {
             if (current && snapshotVersion > current.version) {
               this.replaceDiagram({ ...current, canonicalModel: event.canonicalModel, viewState: event.viewState, version: snapshotVersion });
               this.selectedClassId.set(null); this.selectedRelationId.set(null);
+              this.refreshHistoryAvailability();
+              if (this.tab === 'Historial') this.loadHistory();
             }
           }
         });
@@ -536,6 +569,131 @@ export class EditorPageComponent implements OnDestroy {
     this.diagram.set(next);
   }
 
+  navigateToProject(): void {
+    const projectId = this.diagram()?.projectId?.trim();
+    void this.router.navigate(projectId ? ['/projects', projectId] : ['/projects']);
+  }
+
+  setInspectorTab(tab: string): void {
+    this.tab = tab;
+    if (tab === 'Historial') this.loadHistory();
+  }
+
+  loadHistory(): void {
+    if (!this.diagramId || this.historyLoading()) return;
+    this.historyLoading.set(true);
+    this.historyError.set('');
+    this.historyService.list(this.diagramId, 0, this.historyPageSize).subscribe({
+      next: page => {
+        this.historyPage.set(page);
+        this.historyLoading.set(false);
+      },
+      error: error => {
+        this.historyLoading.set(false);
+        this.historyError.set(this.historyErrorMessage(error));
+      },
+    });
+    this.refreshHistoryAvailability();
+  }
+
+  loadMoreHistory(): void {
+    const page = this.historyPage();
+    if (!page || page.last || this.historyLoading()) return;
+    this.historyLoading.set(true);
+    this.historyService.list(this.diagramId, page.number + 1, this.historyPageSize).subscribe({
+      next: nextPage => {
+        this.historyPage.set({ ...nextPage, content: [...page.content, ...nextPage.content] });
+        this.historyLoading.set(false);
+      },
+      error: error => {
+        this.historyLoading.set(false);
+        this.historyError.set(this.historyErrorMessage(error));
+      },
+    });
+  }
+
+  refreshHistoryAvailability(): void {
+    if (!this.diagramId) return;
+    this.historyService.availability(this.diagramId).subscribe({
+      next: availability => this.historyAvailability.set(availability),
+      error: error => {
+        if (error?.status === 403) this.historyAvailability.set({ diagramId: this.diagramId, currentVersion: this.diagram()?.version ?? 0, canUndo: false, canRedo: false });
+      },
+    });
+  }
+
+  requestHistoryAction(action: 'UNDO' | 'REDO'): void {
+    if (this.isReadOnly() || this.historyActionLoading()) return;
+    const availability = this.historyAvailability();
+    if (!(action === 'UNDO' ? availability?.canUndo : availability?.canRedo)) return;
+    this.historyActionLoading.set(action);
+    this.historyError.set('');
+    const request = action === 'UNDO' ? this.historyService.undo(this.diagramId) : this.historyService.redo(this.diagramId);
+    request.subscribe({
+      next: () => {
+        this.historyActionLoading.set(null);
+        this.refreshDiagramAfterHistory();
+      },
+      error: error => {
+        this.historyActionLoading.set(null);
+        this.historyError.set(this.historyErrorMessage(error));
+        this.refreshHistoryAvailability();
+      },
+    });
+  }
+
+  historyActionLabel(action: string): string {
+    return action === 'UNDO' ? 'Cambio deshecho' : action === 'REDO' ? 'Cambio rehecho' : action === 'APPLY' ? 'Cambio aplicado' : 'Cambio registrado';
+  }
+
+  historyOriginLabel(origin: string): string {
+    return origin === 'AI' ? 'IA' : origin === 'MANUAL' ? 'Manual' : 'Origen no especificado';
+  }
+
+  historyOperationLabel(operationType: string): string {
+    const operation = operationType?.replace(/^BATCH:/, '') ?? '';
+    const labels: Record<string, string> = {
+      ADD_ATTRIBUTE: 'Atributo agregado', REMOVE_ATTRIBUTE: 'Atributo eliminado',
+      UPDATE_ATTRIBUTE: 'Atributo modificado', RENAME_ATTRIBUTE: 'Atributo renombrado',
+      CHANGE_ATTRIBUTE_TYPE: 'Tipo de atributo modificado', ADD_METHOD: 'Método agregado',
+      REMOVE_METHOD: 'Método eliminado', RENAME_METHOD: 'Método renombrado',
+      CREATE_CLASS: 'Clase creada', DELETE_CLASS: 'Clase eliminada',
+      CREATE_RELATION: 'Relación creada', REMOVE_RELATION: 'Relación eliminada',
+      CHANGE_RELATION_TYPE: 'Tipo de relación modificado',
+    };
+    return labels[operation] ?? (operationType?.startsWith('BATCH:') ? 'Lote de cambios' : 'Cambio en el diagrama');
+  }
+
+  historyAuthorLabel(userId: string | null | undefined): string {
+    if (!userId || /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(userId)) return 'Autor no disponible';
+    return userId;
+  }
+
+  private refreshDiagramAfterHistory(): void {
+    this.diagramService.getDiagramById(this.diagramId).subscribe({
+      next: current => {
+        const selectedClass = this.selectedClassId();
+        const selectedRelation = this.selectedRelationId();
+        this.replaceDiagram(current);
+        if (selectedClass && !current.canonicalModel.classes.some(item => item.id === selectedClass)) this.selectedClassId.set(null);
+        if (selectedRelation && !current.canonicalModel.relations.some(item => item.id === selectedRelation)) this.selectedRelationId.set(null);
+        this.historyPage.set(null);
+        this.loadHistory();
+      },
+      error: error => {
+        this.historyError.set(this.historyErrorMessage(error));
+        this.loadHistory();
+      },
+    });
+  }
+
+  private historyErrorMessage(error: HttpErrorResponse): string {
+    if (error?.status === 403) return 'No tienes permisos para modificar el historial.';
+    if (error?.status === 409) return 'El diagrama cambió; actualiza el editor e inténtalo de nuevo.';
+    if (error?.status === 404) return 'El diagrama ya no está disponible.';
+    return 'No se pudo cargar o actualizar el historial. Comprueba la conexión.';
+  }
+
   setActiveTool(tool: EditorTool): void {
     if (this.isReadOnly() && tool !== 'SELECT') return;
     this.activeTool.set(tool);
@@ -543,7 +701,7 @@ export class EditorPageComponent implements OnDestroy {
     if (tool !== 'RELATION') this.relationError.set('');
   }
 
-  openShare(): void { this.moreActionsOpen.set(false); this.shareOpen.set(true); }
+  openShare(): void { this.closeTransientMenus(); this.shareOpen.set(true); }
 
   toggleMoreActions(event?: Event): void {
     event?.stopPropagation();
@@ -552,15 +710,27 @@ export class EditorPageComponent implements OnDestroy {
 
   closeMoreActions(): void { this.moreActionsOpen.set(false); }
 
-  openChat(): void {
+  toggleMobileActions(): void {
+    this.mobileActionsOpen.update((value) => !value);
     this.moreActionsOpen.set(false);
+  }
+
+  closeMobileActions(): void { this.mobileActionsOpen.set(false); }
+
+  closeTransientMenus(): void {
+    this.moreActionsOpen.set(false);
+    this.mobileActionsOpen.set(false);
+  }
+
+  openChat(): void {
+    this.closeTransientMenus();
     this.chatOpen.set(true);
   }
 
   analyzeDiagram(): void {
     const projectId = this.diagram()?.projectId;
     if (!projectId || this.analysisLoading()) return;
-    this.moreActionsOpen.set(false);
+    this.closeTransientMenus();
     this.analysisOpen.set(true);
     this.tab = 'IA';
     this.inspectorOpen.set(true);
@@ -735,6 +905,127 @@ export class EditorPageComponent implements OnDestroy {
     this.changeProposalEdits.update(values => ({ ...values, [proposal.proposalId]: { ...edit, type } }));
   }
 
+  requestChangeProposalApplication(): void {
+    this.changeProposalApplyError.set('');
+    this.changeProposalApplyMessage.set('');
+    if (!this.changeProposalCanApply()) return;
+    this.changeProposalConfirmOpen.set(true);
+  }
+
+  cancelChangeProposalApplication(): void {
+    if (!this.changeProposalApplying()) this.changeProposalConfirmOpen.set(false);
+  }
+
+  changeProposalApplyDescription(proposal: AiChangeProposal): string {
+    const edit = this.changeProposalEdit(proposal);
+    if (proposal.operation === 'ADD_ATTRIBUTE') return `Agregar ${edit.name}: ${edit.type} a ${proposal.targetElementName}`;
+    if (proposal.operation === 'RENAME_ATTRIBUTE') return `Renombrar ${this.changeProposalAttributeName(proposal)} a ${edit.name} en ${proposal.targetElementName}`;
+    if (proposal.operation === 'CHANGE_ATTRIBUTE_TYPE') return `Cambiar ${this.changeProposalAttributeName(proposal)} a ${edit.type} en ${proposal.targetElementName}`;
+    return this.changeOperationLabel(proposal.operation);
+  }
+
+  confirmChangeProposalApplication(): void {
+    if (this.changeProposalApplying() || !this.changeProposalCanApply()) return;
+    const current = this.diagram();
+    const result = this.changeProposalResult();
+    const projectId = current?.projectId;
+    if (!current || !result || !projectId) return;
+    const operations: AiChangeProposalApplyOperation[] = result.proposals
+      .filter(proposal => {
+        const edit = this.changeProposalEdit(proposal);
+        return edit.selected && !edit.discarded;
+      })
+      .map(proposal => {
+        const edit = this.changeProposalEdit(proposal);
+        return {
+          proposalId: proposal.proposalId,
+          operation: proposal.operation,
+          targetElementId: proposal.targetElementId,
+          targetAttributeId: proposal.targetAttributeId,
+          newAttributeName: proposal.operation === 'ADD_ATTRIBUTE' || proposal.operation === 'RENAME_ATTRIBUTE' ? edit.name.trim() : null,
+          attributeType: proposal.operation === 'ADD_ATTRIBUTE' || proposal.operation === 'CHANGE_ATTRIBUTE_TYPE' ? edit.type.trim() : null,
+        };
+      });
+    if (!operations.length || operations.length > 3) return;
+    const fingerprint = JSON.stringify({ diagramId: current.id, baseVersion: result.diagramVersion, operations });
+    if (!this.changeProposalApplyAttempt || this.changeProposalApplyAttempt.fingerprint !== fingerprint) {
+      this.changeProposalApplyAttempt = { fingerprint, requestId: crypto.randomUUID() };
+    }
+    const request: AiChangeProposalApplyRequest = {
+      diagramId: current.id,
+      baseVersion: result.diagramVersion,
+      requestId: this.changeProposalApplyAttempt.requestId,
+      confirmed: true,
+      operations,
+    };
+    this.changeProposalApplying.set(true);
+    this.changeProposalApplyError.set('');
+    this.aiChangeProposalsService.apply(projectId, request).subscribe({
+      next: response => {
+        if (response.diagramId !== this.diagramId) return;
+        this.diagram.update(diagram => diagram ? {
+          ...diagram,
+          version: response.newVersion,
+          canonicalModel: response.canonicalModel,
+          viewState: response.viewState,
+        } : diagram);
+        const appliedIds = new Set(operations.map(operation => operation.proposalId));
+        const remaining = result.proposals.filter(proposal => !appliedIds.has(proposal.proposalId));
+        // Las propuestas restantes conservan la versión sobre la que fueron generadas.
+        // El snapshot nuevo las marca obsoletas hasta que el usuario las regenere.
+        this.changeProposalResult.set({ ...result, proposals: remaining, isStale: false });
+        this.initializeChangeProposalEdits(remaining);
+        this.changeProposalFormOpen.set(remaining.length === 0);
+        this.changeProposalConfirmOpen.set(false);
+        this.changeProposalApplyAttempt = null;
+        this.changeProposalApplyMessage.set(`${response.appliedOperations} ${response.appliedOperations === 1 ? 'cambio aplicado' : 'cambios aplicados'}.`);
+        this.changeProposalApplying.set(false);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.changeProposalApplyError.set(this.changeProposalApplyErrorMessage(error));
+        this.changeProposalApplying.set(false);
+        if (error.status === 409) this.changeProposalConfirmOpen.set(false);
+      },
+    });
+  }
+
+  private selectedChangeProposalsAreValid(): boolean {
+    const result = this.changeProposalResult();
+    const current = this.diagram();
+    if (!result || !current) return false;
+    const selected = result.proposals.filter(proposal => {
+      const edit = this.changeProposalEdit(proposal);
+      return edit.selected && !edit.discarded;
+    });
+    if (!selected.length || selected.length > 3) return false;
+    const names = new Set<string>();
+    for (const proposal of selected) {
+      const edit = this.changeProposalEdit(proposal);
+      if ((proposal.operation === 'ADD_ATTRIBUTE' || proposal.operation === 'RENAME_ATTRIBUTE')
+        && !/^[$\p{L}_][$\p{L}\p{N}_]*$/u.test(edit.name.trim())) return false;
+      if ((proposal.operation === 'ADD_ATTRIBUTE' || proposal.operation === 'CHANGE_ATTRIBUTE_TYPE')
+        && !this.supportedChangeProposalTypes.includes(edit.type.trim())) return false;
+      if (proposal.operation === 'ADD_ATTRIBUTE') {
+        const target = current.canonicalModel.classes.find(umlClass => umlClass.id === proposal.targetElementId);
+        if (!target || target.attributes.some(attribute => attribute.name === edit.name.trim())) return false;
+        const key = `${proposal.targetElementId}|${edit.name.trim().toLowerCase()}`;
+        if (names.has(key)) return false;
+        names.add(key);
+      }
+      if ((proposal.operation === 'RENAME_ATTRIBUTE' || proposal.operation === 'CHANGE_ATTRIBUTE_TYPE')
+        && !proposal.targetAttributeId) return false;
+    }
+    return true;
+  }
+
+  private changeProposalApplyErrorMessage(error: HttpErrorResponse): string {
+    if (error.status === 403) return 'No tienes permiso para modificar este diagrama.';
+    if (error.status === 409) return 'El diagrama cambió. Actualiza o genera nuevamente las propuestas antes de aplicar.';
+    if (error.status === 404) return 'El proyecto o diagrama ya no existe.';
+    if (error.status === 0) return 'No se pudo confirmar la aplicación. Verifica la conexión antes de reintentar.';
+    return error.error?.message ?? 'No se pudieron aplicar las propuestas.';
+  }
+
   changeProposalDisplayNewValue(proposal: AiChangeProposal): string {
     const edit = this.changeProposalEdit(proposal);
     if (proposal.operation === 'ADD_ATTRIBUTE') return `${edit.name}: ${edit.type}`;
@@ -905,11 +1196,16 @@ export class EditorPageComponent implements OnDestroy {
     return error.error?.message ?? 'No se pudo analizar el diagrama. Revisa tu conexión e inténtalo de nuevo.';
   }
 
-  toggleToolbar(): void { this.toolbarOpen.update((value) => !value); }
-  toggleInspector(): void { this.inspectorOpen.update((value) => !value); }
+  toggleToolbar(): void {
+    this.toolbarOpen.update((value) => !value);
+  }
+
+  toggleInspector(): void {
+    this.inspectorOpen.update((value) => !value);
+  }
 
   openGeneratorDialog(): void {
-    this.moreActionsOpen.set(false);
+    this.closeTransientMenus();
     const name = this.diagram()?.name ?? 'uml-diagram';
     const artifact = name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'generated-backend';
     this.generatorOptions.set({ ...this.generatorOptions(), artifactId: artifact, projectName: `${name} Backend` });
@@ -975,8 +1271,14 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   onEditorKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Escape' && this.moreActionsOpen()) {
-      this.closeMoreActions();
+    if (event.key === 'Escape' && (this.moreActionsOpen() || this.mobileActionsOpen())) {
+      this.closeTransientMenus();
+      event.stopPropagation();
+      return;
+    }
+    if (event.key === 'Escape' && (this.toolbarOpen() || this.inspectorOpen())) {
+      this.toolbarOpen.set(false);
+      this.inspectorOpen.set(false);
       event.stopPropagation();
       return;
     }
@@ -996,7 +1298,7 @@ export class EditorPageComponent implements OnDestroy {
   }
 
   openImportDialog(): void {
-    this.moreActionsOpen.set(false);
+    this.closeTransientMenus();
     this.importDialogOpen.set(true);
     this.importError.set('');
     this.importDragOver.set(false);
@@ -1005,7 +1307,7 @@ export class EditorPageComponent implements OnDestroy {
 
   openImageUpdate(): void {
     if (this.isReadOnly()) return;
-    this.moreActionsOpen.set(false);
+    this.closeTransientMenus();
     this.imageUpdateOpen.set(true); this.imageUpdateError.set(''); this.imageUpdatePreview.set(null);
     this.imageUpdateFile.set(null); this.imageUpdateSelected.set({});
   }
@@ -1150,6 +1452,8 @@ export class EditorPageComponent implements OnDestroy {
     this.aiVoiceCommand.interpret({
       text: this.voiceText(), language: 'es-BO',
       diagramContext: context,
+      projectId: current.projectId,
+      diagramId: current.id,
     }).subscribe({
       next: (response) => {
         const command = response.command;
@@ -1219,7 +1523,7 @@ export class EditorPageComponent implements OnDestroy {
     this.voiceState.set('applying'); this.voiceError.set('');
     this.operationService.execute(this.diagramId, { operation: { operationId: crypto.randomUUID(), diagramId: this.diagramId, userId: DEV_USER_ID, baseVersion: current.version, type, payload: payload as never } }).subscribe({
       next: (response) => { this.applyOperationResponse(response); this.voiceState.set('ready'); this.voiceDialogOpen.set(false); },
-      error: (error: unknown) => { this.voiceState.set('error'); this.voiceError.set(this.operationError(error, 'No se pudo aplicar el comando de voz.')); },
+      error: (error: unknown) => { this.voiceState.set('error'); this.voiceError.set(this.voiceOperationError(error)); },
     });
   }
 
@@ -1404,6 +1708,7 @@ export class EditorPageComponent implements OnDestroy {
     const button = (event.target as HTMLElement).closest('button');
     const toolbar = button?.closest('.toolbar');
     if (!button || !toolbar) return;
+    this.toolbarOpen.set(false);
     const buttons = Array.from(toolbar.querySelectorAll('button'));
     if (buttons.indexOf(button) === 8) {
       this.openVoiceDialog();
@@ -3076,6 +3381,13 @@ export class EditorPageComponent implements OnDestroy {
           );
         },
       });
+  }
+
+  private voiceOperationError(error: unknown): string {
+    if (error instanceof HttpErrorResponse && error.status === 409) return 'El diagrama cambió en otra sesión. Recarga para obtener la versión más reciente.';
+    return error instanceof HttpErrorResponse && error.error?.message
+      ? error.error.message
+      : 'No se pudo aplicar el comando de voz.';
   }
 
   private operationError(error: unknown, fallback: string): string {

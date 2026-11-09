@@ -11,6 +11,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -36,12 +37,12 @@ public class SecurityConfig implements WebMvcConfigurer {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // JWT is validated by the WebSocket handshake interceptor.
                         .requestMatchers("/ws/collaboration").permitAll()
                         .requestMatchers("/api/import/**").authenticated()
                         .requestMatchers("/api/projects/**", "/api/diagrams/**", "/api/shared/**").authenticated()
-                        // Existing UML endpoints remain public during this incremental auth rollout.
-                        .requestMatchers("/api/**").permitAll()
+                        .requestMatchers("/api/**").authenticated()
                         .anyRequest().authenticated());
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

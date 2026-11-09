@@ -4,6 +4,8 @@ export interface AiVoiceInterpretRequest {
   text: string;
   language: string;
   diagramContext: VoiceDiagramContext;
+  projectId?: string;
+  diagramId?: string;
 }
 
 export interface VoiceDiagramContext {

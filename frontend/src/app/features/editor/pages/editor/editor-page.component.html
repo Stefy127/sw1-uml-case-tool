@@ -1,14 +1,14 @@
-<div class="editor" (click)="closeMoreActions()" (keydown)="onEditorKeydown($event)" (keyup)="onEditorKeyup($event)" tabindex="0">
-  <header class="editor-head" (click)="closeMoreActions()">
-    <a routerLink="/projects" class="editor-brand"
+<div class="editor" (click)="closeTransientMenus()" (keydown)="onEditorKeydown($event)" (keyup)="onEditorKeyup($event)" tabindex="0">
+  <header class="editor-head" (click)="closeTransientMenus()">
+    <a class="editor-brand" role="button" [attr.aria-label]="loading() ? 'Cargando proyecto' : 'Volver al proyecto'" [attr.aria-disabled]="loading()" [attr.tabindex]="loading() ? -1 : 0" (click)="!loading() && navigateToProject()" (keydown.enter)="!loading() && navigateToProject()" (keydown.space)="$event.preventDefault(); !loading() && navigateToProject()"
       >← <span class="brand-mark">S</span><b>SW1</b> UML ›</a
     >
     <div class="editor-title">
       <b>{{ loading() ? 'Cargando...' : (diagram()?.name ?? 'Diagrama') }}</b>
       <span>{{ error() || 'Guardado · versión ' + (diagram()?.version ?? '—') }}</span>
     </div>
-    <div class="editor-mobile-controls" aria-label="Paneles del editor"><button type="button" title="Mostrar herramientas" aria-label="Mostrar herramientas UML" [attr.aria-expanded]="toolbarOpen()" (click)="toggleToolbar()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg></button><button type="button" title="Mostrar inspector" aria-label="Mostrar inspector" [attr.aria-expanded]="inspectorOpen()" (click)="toggleInspector()"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 4v16" /></svg></button></div>
-    <div class="editor-actions" (click)="$event.stopPropagation()">
+    <div class="editor-mobile-controls" aria-label="Controles móviles del editor"><button type="button" title="Mostrar herramientas" aria-label="Mostrar herramientas UML" [attr.aria-expanded]="toolbarOpen()" (click)="toggleToolbar()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg></button><button type="button" title="Mostrar inspector" aria-label="Mostrar inspector" [attr.aria-expanded]="inspectorOpen()" (click)="toggleInspector()"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M9 4v16" /></svg></button><button type="button" title="Mostrar acciones" aria-label="Mostrar acciones del editor" [attr.aria-expanded]="mobileActionsOpen()" (click)="toggleMobileActions()"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="19" cy="12" r="1.2" /></svg></button></div>
+    <div class="editor-actions" [class.mobile-actions-open]="mobileActionsOpen()" (click)="closeMobileActions(); $event.stopPropagation()">
       @if (isReadOnly()) { <span class="read-only-badge">Solo lectura</span> }
       @for (member of projectMembers().slice(0, 3); track member.id) { <span class="avatar rose real-collaborator" [title]="member.firstName + ' ' + member.lastName">{{ member.firstName[0] }}{{ member.lastName[0] }}</span> }
       @for (member of collaboration?.onlineUsers?.() ?? []; track member.userId) { <span class="avatar rose online-collaborator" [title]="member.firstName + ' ' + member.lastName">{{ member.firstName[0] }}{{ member.lastName[0] }}</span> }
@@ -246,9 +246,10 @@
     </main>
 
     <aside class="inspector" [class.inspector-open]="inspectorOpen()">
+      <div class="inspector-mobile-header"><b>Inspector</b><button type="button" aria-label="Cerrar inspector" title="Cerrar inspector" (click)="inspectorOpen.set(false)">&times;</button></div>
       <div class="tabs">
         @for (tabName of ['Propiedades', 'IA', 'Historial']; track tabName) {
-          <button [class.active]="tab === tabName" (click)="tab = tabName">
+          <button [class.active]="tab === tabName" (click)="setInspectorTab(tabName)">
             {{ tabName }}
             @if (tabName === 'IA') {
               <em>AI</em>
@@ -829,7 +830,7 @@
                 <div class="analysis-summary"><div><span class="section-label">Vista previa</span><p>{{ result.proposals.length ? 'Revisa la propuesta antes de cualquier futura aplicación.' : 'No se generaron propuestas para esta instrucción.' }}</p></div><span class="finding-count">{{ result.proposals.length }} {{ result.proposals.length === 1 ? 'propuesta' : 'propuestas' }}</span></div>
                 @if (changeProposalInstructionChanged()) { <div class="analysis-stale" role="status">La instrucción cambió; esta vista previa corresponde al texto anterior.</div> }
                 <div class="proposal-version">Versión consultada: {{ result.diagramVersion }}</div>
-                @if (changeProposalStale()) { <div class="analysis-stale" role="status">El diagrama cambió; esta vista previa ya no representa el estado actual.</div> }
+                @if (changeProposalStale()) { <div class="analysis-stale" role="status">El diagrama cambió; las propuestas restantes fueron generadas sobre la versión anterior. Genera nuevamente antes de aplicarlas.</div> }
                 @if (!result.proposals.length) {
                   <div class="analysis-state empty"><b>Sin propuestas</b><small>La instrucción puede ser ambigua o no corresponder a una operación permitida.</small></div>
                 } @else {
@@ -855,6 +856,13 @@
                     }
                   </div>
                 }
+                @if (changeProposalApplyMessage()) { <p class="success-message" role="status">{{ changeProposalApplyMessage() }}</p> }
+                @if (changeProposalApplyError()) { <p class="error-message" role="alert">{{ changeProposalApplyError() }}</p> }
+                @if (changeProposalResult()?.proposals?.length) {
+                  <button class="btn btn-primary analysis-retry" type="button" [disabled]="!changeProposalCanApply() || changeProposalApplying()" (click)="requestChangeProposalApplication()">
+                    {{ changeProposalApplying() ? 'Aplicando...' : changeProposalStale() ? 'Propuestas desactualizadas' : 'Aplicar seleccionadas (' + selectedChangeProposalCount() + ')' }}
+                  </button>
+                }
                 <button class="btn btn-soft analysis-retry" type="button" [disabled]="changeProposalLoading()" (click)="retryChangeProposals()">Generar nuevamente</button>
               }
             </section>
@@ -863,8 +871,35 @@
       }
       @if (tab === 'Historial') {
         <div class="history">
-          <span class="section-label">Actividad reciente</span>
-          <p>Las operaciones del diagrama aparecerán aquí.<small>Historial próximamente</small></p>
+          <div class="history-heading">
+            <div><h2>Historial de cambios</h2><small>Versiones y operaciones del diagrama</small></div>
+            <button class="btn btn-ghost history-refresh" type="button" aria-label="Actualizar historial" title="Actualizar historial" [disabled]="historyLoading()" (click)="loadHistory()">↻</button>
+          </div>
+          <div class="history-actions" aria-label="Controles de historial">
+            <button class="btn btn-soft" type="button" [disabled]="isReadOnly() || !historyAvailability()?.canUndo || historyActionLoading() !== null" (click)="requestHistoryAction('UNDO')">{{ historyActionLoading() === 'UNDO' ? 'Deshaciendo...' : 'Deshacer' }}</button>
+            <button class="btn btn-soft" type="button" [disabled]="isReadOnly() || !historyAvailability()?.canRedo || historyActionLoading() !== null" (click)="requestHistoryAction('REDO')">{{ historyActionLoading() === 'REDO' ? 'Rehaciendo...' : 'Rehacer' }}</button>
+          </div>
+          @if (historyError()) { <p class="error-message" role="alert">{{ historyError() }}</p> }
+          @if (historyLoading() && !historyPage()) { <div class="history-state">Cargando historial...</div> }
+          @else if (historyPage()?.content?.length === 0) { <div class="history-state">Aún no hay operaciones registradas.</div> }
+          @else {
+            <div class="history-list" (scroll)="$any($event.target).scrollTop + $any($event.target).clientHeight >= $any($event.target).scrollHeight - 24 && loadMoreHistory()">
+              @for (entry of historyPage()?.content ?? []; track entry.id) {
+                <article class="history-entry" [class.history-undone]="entry.state === 'UNDONE'">
+                  <div class="history-entry-top"><b>{{ historyOperationLabel(entry.operationType) }}</b><span>{{ historyOriginLabel(entry.origin) }}</span></div>
+                  <p class="history-action">{{ entry.state === 'UNDONE' ? 'Cambio deshecho' : historyActionLabel(entry.action) }} · versión {{ entry.newVersion }}</p>
+                  <p>{{ entry.state === 'UNDONE' ? 'Deshecha' : historyActionLabel(entry.action) }} · versión {{ entry.newVersion }}</p>
+                  <strong>{{ entry.description }}</strong>
+                  @if (entry.details.length) {
+                    <details class="history-details"><summary>Ver detalle</summary><ul>@for (detail of entry.details; track $index) { <li>{{ detail }}</li> }</ul></details>
+                  }
+                  <small class="history-meta">{{ historyAuthorLabel(entry.userId) }} · {{ entry.createdAt | date:'dd/MM/yyyy HH:mm' }}</small>
+                  <small>{{ entry.userId }} · {{ entry.createdAt | date:'dd/MM/yyyy HH:mm' }}</small>
+                </article>
+              }
+              @if (historyLoading()) { <div class="history-state">Cargando más...</div> }
+            </div>
+          }
         </div>
       }
       @if (pendingClassDeletion(); as umlClass) {
@@ -1038,6 +1073,26 @@
               >
                 {{ attributeSaving() ? 'Eliminando...' : 'Eliminar' }}
               </button>
+            </div>
+          </section>
+        </div>
+      }
+      @if (changeProposalConfirmOpen()) {
+        <div class="attribute-modal-backdrop" role="presentation" (click)="cancelChangeProposalApplication()">
+          <section class="attribute-modal change-proposal-confirm" role="dialog" aria-modal="true" aria-labelledby="change-proposal-confirm-title" (click)="$event.stopPropagation()">
+            <div class="attribute-modal-icon">!</div>
+            <h2 id="change-proposal-confirm-title">Confirmar cambios</h2>
+            <p>Se modificará el diagrama <strong>{{ diagram()?.name }}</strong> usando la versión {{ changeProposalResult()?.diagramVersion }}.</p>
+            <p>Se aplicarán {{ selectedChangeProposalCount() }} {{ selectedChangeProposalCount() === 1 ? 'propuesta' : 'propuestas' }}:</p>
+            <ul class="change-proposal-confirm-list">
+              @for (proposal of changeProposalResult()?.proposals ?? []; track proposal.proposalId) {
+                @if (changeProposalEdit(proposal).selected && !changeProposalEdit(proposal).discarded) { <li>{{ changeProposalApplyDescription(proposal) }}</li> }
+              }
+            </ul>
+            <small>Esta acción modificará el diagrama real y no se ejecutará si cancelas.</small>
+            <div class="attribute-modal-actions">
+              <button class="btn btn-ghost" type="button" [disabled]="changeProposalApplying()" (click)="cancelChangeProposalApplication()">Cancelar</button>
+              <button class="btn btn-primary" type="button" [disabled]="changeProposalApplying()" (click)="confirmChangeProposalApplication()">{{ changeProposalApplying() ? 'Aplicando...' : 'Confirmar y aplicar' }}</button>
             </div>
           </section>
         </div>

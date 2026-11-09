@@ -110,7 +110,7 @@ public class ImageUmlCanonicalMapper {
 
     private Multiplicity multiplicity(String value, List<String> warnings) {
         if (!hasText(value)) {
-            warnings.add("No se pudo determinar una multiplicidad visible; se usÃ³ 1..1.");
+            warnings.add("No se pudo determinar una multiplicidad visible; se usó 1..1.");
             return new Multiplicity("1", "1");
         }
         String normalized = value.trim().replace(" ", "");

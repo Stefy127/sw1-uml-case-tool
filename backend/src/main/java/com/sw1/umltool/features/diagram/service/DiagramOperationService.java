@@ -12,6 +12,9 @@ import com.sw1.umltool.features.diagram.validation.CanonicalModelValidator;
 import com.sw1.umltool.features.diagram.validation.ValidationResult;
 import org.springframework.stereotype.Service;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -59,6 +62,50 @@ public class DiagramOperationService {
         workingDiagram.setVersion(previousVersion + 1);
         return OperationExecutionResult.builder()
                 .operationId(operation.getOperationId())
+                .diagramId(currentDiagram.getId())
+                .previousVersion(previousVersion)
+                .newVersion(previousVersion + 1)
+                .diagram(workingDiagram)
+                .viewState(workingViewState)
+                .build();
+    }
+
+    public OperationExecutionResult executeBatch(
+            List<DiagramOperation> operations,
+            UmlDiagram currentDiagram,
+            DiagramViewState currentViewState) {
+        if (operations == null || operations.isEmpty()) {
+            throw new OperationApplicationException("At least one operation is required");
+        }
+        long previousVersion = currentDiagram == null ? -1 : currentDiagram.getVersion();
+        Set<String> operationIds = new HashSet<>();
+        for (DiagramOperation operation : operations) {
+            validateBasicArguments(operation, currentDiagram, currentViewState);
+            if (operation.getBaseVersion() != previousVersion) {
+                throw new VersionConflictException("Version conflict: current version " + previousVersion
+                        + ", received version " + operation.getBaseVersion());
+            }
+            if (!operationIds.add(operation.getOperationId())) {
+                throw new OperationApplicationException("Duplicate operation id in batch");
+            }
+        }
+
+        UmlDiagram workingDiagram = diagramStateCloner.cloneDiagram(currentDiagram);
+        DiagramViewState workingViewState = diagramStateCloner.cloneViewState(currentViewState);
+        for (DiagramOperation operation : operations) {
+            diagramOperationApplier.apply(operation, workingDiagram, workingViewState);
+        }
+        ValidationResult validation = canonicalModelValidator.validate(workingDiagram);
+        if (!validation.isValid()) {
+            String errorCodes = validation.getErrors().stream()
+                    .map(error -> error.getCode())
+                    .collect(Collectors.joining(", "));
+            throw new OperationApplicationException(
+                    "Operation batch would produce an invalid UML model. Errors: " + errorCodes);
+        }
+        workingDiagram.setVersion(previousVersion + 1);
+        return OperationExecutionResult.builder()
+                .operationId(operations.get(0).getOperationId())
                 .diagramId(currentDiagram.getId())
                 .previousVersion(previousVersion)
                 .newVersion(previousVersion + 1)
