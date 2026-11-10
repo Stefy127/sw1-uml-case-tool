@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class AiOrchestrator {
     private static final Logger log = LoggerFactory.getLogger(AiOrchestrator.class);
+    private static final int STRUCTURED_OUTPUT_MAX_TOKENS = 1024;
     private final ChatClient chatClient;
     private final AiMessageRepository messages;
     private final AiContextService context;
@@ -66,12 +67,15 @@ public class AiOrchestrator {
     /** Submits a read-only prompt through the same bounded Ollama queue used by chat. */
     public Future<String> submitPrompt(String systemPrompt, String userPrompt) {
         if (!enabled) throw new IllegalStateException("El asistente de IA está deshabilitado.");
-        return executor.submit(() -> callModel(systemPrompt, userPrompt));
+        return executor.submit(() -> callModel(systemPrompt, userPrompt, STRUCTURED_OUTPUT_MAX_TOKENS));
     }
 
-    private String callModel(String systemPrompt, String userPrompt) throws Exception {
+    private String callModel(String systemPrompt, String userPrompt, int maxOutputTokens) throws Exception {
         Future<String> generation = modelExecutor.submit(() -> chatClient.prompt()
-                .options(OllamaChatOptions.builder().disableThinking())
+                .options(OllamaChatOptions.builder()
+                        .disableThinking()
+                        .numPredict(maxOutputTokens)
+                        .build())
                 .system(systemPrompt)
                 .user(userPrompt)
                 .call().content());
