@@ -23,7 +23,7 @@ import java.util.concurrent.TimeoutException;
 @Service
 public class AiAnalysisService {
     private static final Logger log = LoggerFactory.getLogger(AiAnalysisService.class);
-    private static final int MAX_FINDINGS = 50;
+    private static final int MAX_FINDINGS = 8;
     private static final int MAX_SUMMARY_LENGTH = 2000;
     private static final int MAX_FIELD_LENGTH = 1000;
     private final AiAnalysisContextService context;
@@ -50,6 +50,9 @@ public class AiAnalysisService {
     }
 
     private AnalysisResponse analyzePrepared(AiAnalysisContextService.PreparedContext prepared) {
+        long startedAt = System.nanoTime();
+        log.info("AI analysis started projectId={} promptChars={} elements={}", prepared.projectId(),
+                prepared.prompt().length(), prepared.descriptors().size());
         Future<String> request;
         try {
             request = orchestrator.submitPrompt(systemPrompt(), prepared.prompt());
@@ -57,9 +60,15 @@ public class AiAnalysisService {
             throw new AiAnalysisException("El análisis de IA está ocupado o deshabilitado.", exception);
         }
         try {
-            return validate(parse(request.get(timeoutSeconds + 1, TimeUnit.SECONDS)), prepared);
+            AnalysisResponse response = validate(parse(request.get(timeoutSeconds + 1, TimeUnit.SECONDS)), prepared);
+            log.info("AI analysis completed projectId={} durationMs={} findings={}", prepared.projectId(),
+                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt), response.findings().size());
+            return response;
         } catch (TimeoutException exception) {
             request.cancel(true);
+            log.warn("AI analysis timed out projectId={} durationMs={} promptChars={} elements={}",
+                    prepared.projectId(), TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt),
+                    prepared.prompt().length(), prepared.descriptors().size());
             throw new AiAnalysisException("El análisis de IA superó el tiempo permitido.", exception);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -253,6 +262,7 @@ public class AiAnalysisService {
                 "No conviertas nombres singulares legítimos en plurales con heurísticas simples. " +
                 "Escribe títulos, descripciones y sugerencias breves, claras y sin UUID, nombres de propiedades internas, sourceRole, targetRole ni null. " +
                 "El identificador técnico solo puede aparecer en elementId. Un diagrama correcto puede tener cero hallazgos. " +
+                "Devuelve como máximo 8 hallazgos y evita explicaciones fuera del JSON. " +
                 "Devuelve únicamente JSON válido con esta forma: " +
                 "{\"summary\":\"resumen breve para el usuario\",\"findings\":[{\"severity\":\"INFO|WARNING|ERROR\",\"category\":\"NAMING|ATTRIBUTE|OPERATION|RELATIONSHIP|MULTIPLICITY|INHERITANCE|CONSISTENCY|GENERAL\",\"elementId\":\"id o null\",\"title\":\"título breve\",\"description\":\"explicación breve\",\"suggestion\":\"recomendación breve o null\"}]}";
     }
