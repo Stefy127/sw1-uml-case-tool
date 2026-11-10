@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class AiOrchestrator {
     private static final Logger log = LoggerFactory.getLogger(AiOrchestrator.class);
-    private static final int STRUCTURED_OUTPUT_MAX_TOKENS = 1024;
+    private static final int STRUCTURED_OUTPUT_MAX_TOKENS = 512;
     private final ChatClient chatClient;
     private final AiMessageRepository messages;
     private final AiContextService context;
@@ -74,8 +74,8 @@ public class AiOrchestrator {
         Future<String> generation = modelExecutor.submit(() -> chatClient.prompt()
                 .options(OllamaChatOptions.builder()
                         .disableThinking()
-                        .numPredict(maxOutputTokens)
-                        .build())
+                        .format("json")
+                        .numPredict(maxOutputTokens))
                 .system(systemPrompt)
                 .user(userPrompt)
                 .call().content());
