@@ -23,7 +23,7 @@ import java.util.concurrent.TimeoutException;
 @Service
 public class AiAnalysisService {
     private static final Logger log = LoggerFactory.getLogger(AiAnalysisService.class);
-    private static final int MAX_FINDINGS = 8;
+    private static final int MAX_FINDINGS = 4;
     private static final int MAX_SUMMARY_LENGTH = 2000;
     private static final int MAX_FIELD_LENGTH = 1000;
     private final AiAnalysisContextService context;
@@ -262,7 +262,8 @@ public class AiAnalysisService {
                 "No conviertas nombres singulares legítimos en plurales con heurísticas simples. " +
                 "Escribe títulos, descripciones y sugerencias breves, claras y sin UUID, nombres de propiedades internas, sourceRole, targetRole ni null. " +
                 "El identificador técnico solo puede aparecer en elementId. Un diagrama correcto puede tener cero hallazgos. " +
-                "Devuelve como máximo 8 hallazgos y evita explicaciones fuera del JSON. " +
+                "Devuelve como máximo 4 hallazgos. Cada título debe tener máximo 60 caracteres y cada descripción o sugerencia máximo 180 caracteres. " +
+                "Evita explicaciones fuera del JSON. " +
                 "Devuelve únicamente JSON válido con esta forma: " +
                 "{\"summary\":\"resumen breve para el usuario\",\"findings\":[{\"severity\":\"INFO|WARNING|ERROR\",\"category\":\"NAMING|ATTRIBUTE|OPERATION|RELATIONSHIP|MULTIPLICITY|INHERITANCE|CONSISTENCY|GENERAL\",\"elementId\":\"id o null\",\"title\":\"título breve\",\"description\":\"explicación breve\",\"suggestion\":\"recomendación breve o null\"}]}";
     }
